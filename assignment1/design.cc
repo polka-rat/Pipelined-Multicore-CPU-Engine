@@ -491,13 +491,42 @@ std::unique_ptr<Processor> BuildDesign(Machine* machine) {
   builder.Connect(pc_node, fetch_node, ConnectionType::kData);
 
   // TODO: register if_id, id_ex, ex_mem, mem_wb (AddRegister)
+  NodeId if_id_node = builder.AddRegister(RegisterRole::kIfId, "if_id", if_id);
+  NodeId id_ex_node = builder.AddRegister(RegisterRole::kIdEx, "id_ex", id_ex);
+  NodeId ex_mem_node = builder.AddRegister(RegisterRole::kExMem, "ex_mem", ex_mem);
+  NodeId mem_wb_node = builder.AddRegister(RegisterRole::kMemWb, "mem_wb", mem_wb);
+
   // TODO: register decode, execute, memory, writeback (AddStage)
+  NodeId decode_node = builder.AddStage(StageRole::kDecode, "decode", decode);
+  NodeId execute_node = builder.AddStage(StageRole::kExecute, "execute", execute);
+  NodeId memory_node = builder.AddStage(StageRole::kMemory, "memory", memory);
+  NodeId writeback_node = builder.AddStage(StageRole::kWriteback, "writeback", writeback);
+
   // TODO: register alu, main_control, hazard_control (AddUnit)
+  NodeId alu_node = builder.AddUnit(UnitRole::kAlu, "alu", alu);
+  NodeId main_control_node = builder.AddUnit(UnitRole::kMainControl, "main_control", main_control);
+  NodeId hazard_control_node = builder.AddUnit(UnitRole::kHazardControl, "hazard_control", hazard_control);
+
   // TODO: connect every edge in SPEC.md's table. In the worked example
   //       above, a register feeding a stage is kData -- a stage writing
   //       into a register is kClockedData instead. kControl, kStall,
   //       kBubble, kRedirect are each used for exactly the one
   //       connection SPEC.md names them for.
+  builder.Connect(fetch_node, if_id_node, ConnectionType::kClockedData);
+  builder.Connect(if_id_node, decode_node, ConnectionType::kData);
+  builder.Connect(decode_node, id_ex_node, ConnectionType::kClockedData);
+  builder.Connect(id_ex_node, execute_node, ConnectionType::kData);
+  builder.Connect(execute_node, ex_mem_node, ConnectionType::kClockedData);
+  builder.Connect(ex_mem_node, memory_node, ConnectionType::kData);
+  builder.Connect(memory_node, mem_wb_node, ConnectionType::kClockedData);
+  builder.Connect(mem_wb_node, writeback_node, ConnectionType::kData);
+
+  builder.Connect(alu_node, ex_mem_node, ConnectionType::kData);
+  builder.Connect(main_control_node, id_ex_node, ConnectionType::kControl);
+  builder.Connect(hazard_control_node, pc_node, ConnectionType::kStall);
+  builder.Connect(hazard_control_node, if_id_node, ConnectionType::kStall);
+  builder.Connect(hazard_control_node, id_ex_node, ConnectionType::kBubble);
+  builder.Connect(execute_node, pc_node, ConnectionType::kRedirect);
 
   return builder.Build(machine);
 }
