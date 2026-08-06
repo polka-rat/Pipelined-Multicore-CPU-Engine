@@ -38,11 +38,8 @@ bool IsControl(Opcode opcode) {
   (void)opcode;
   switch (opcode) {
     case Opcode::kBeq:
-      return true;
     case Opcode::kBne:
-      return true;
     case Opcode::kJ:
-      return true;
     case Opcode::kHalt:
       return true;
     default:
@@ -55,9 +52,7 @@ bool ReadsRs1(Opcode opcode) {
   (void)opcode;
   switch (opcode) {
     case Opcode::kNop:
-      return false;
     case Opcode::kHalt:
-      return false;
     case Opcode::kJ:
       return false;
     default:
@@ -69,13 +64,9 @@ bool ReadsRs2(Opcode opcode) {
   (void)opcode;
   switch (opcode) {
     case Opcode::kNop:
-      return false;
     case Opcode::kHalt:
-      return false;
     case Opcode::kJ:
-      return false;
     case Opcode::kAddi:
-      return false;
     case Opcode::kLw:
       return false;
     default:
@@ -108,7 +99,7 @@ class Alu : public TrackedUnit {
 class MainControl : public TrackedUnit {
  public:
   Control Decode(Opcode opcode) {
-    Touch();
+    Touch();  //Reports how often a unit is used
 
     Control control;
     switch (opcode) {
@@ -119,23 +110,46 @@ class MainControl : public TrackedUnit {
         break;
 
       case Opcode::kAdd:
+        control.reg_write = true;
+        control.alu_op = AluOp::kAdd;
+        break;
       case Opcode::kSub:
+        control.reg_write = true;
+        control.alu_op = AluOp::kSub;
+        break;
       case Opcode::kAnd:
+        control.reg_write = true;
+        control.alu_op = AluOp::kAnd;
+        break;
       case Opcode::kOr:
+        control.reg_write = true;
+        control.alu_op = AluOp::kOr;
+        break;
       case Opcode::kXor:
-        break;  // TODO
+        control.reg_write = true;
+        control.alu_op = AluOp::kXor;
+        break;
 
       case Opcode::kLw:
+        control.reg_write = true;
+        control.mem_read = true;
+        control.use_immediate = true;
+        control.alu_op = AluOp::kAdd;
         break;  // TODO
 
       case Opcode::kSw:
+        control.mem_write = true;
+        control.use_immediate = true;
+        control.alu_op = AluOp::kAdd;
         break;  // TODO
 
       case Opcode::kBeq:
       case Opcode::kBne:
+        control.alu_op = AluOp::kSub;
         break;  // TODO
 
       case Opcode::kHalt:
+        control.halt = true;
         break;  // TODO
 
       case Opcode::kJ:
