@@ -36,16 +36,51 @@ struct Latch {
 
 bool IsControl(Opcode opcode) {
   (void)opcode;
+  switch (opcode) {
+    case Opcode::kBeq:
+      return true;
+    case Opcode::kBne:
+      return true;
+    case Opcode::kJ:
+      return true;
+    case Opcode::kHalt:
+      return true;
+    default:
+      return false;
+  }
   return false;  // TODO
 }
 
 bool ReadsRs1(Opcode opcode) {
   (void)opcode;
-  return false;  // TODO
+  switch (opcode) {
+    case Opcode::kNop:
+      return false;
+    case Opcode::kHalt:
+      return false;
+    case Opcode::kJ:
+      return false;
+    default:
+      return true;
+  }  return false;  // TODO
 }
 
 bool ReadsRs2(Opcode opcode) {
   (void)opcode;
+  switch (opcode) {
+    case Opcode::kNop:
+      return false;
+    case Opcode::kHalt:
+      return false;
+    case Opcode::kJ:
+      return false;
+    case Opcode::kAddi:
+      return false;
+    case Opcode::kLw:
+      return false;
+    default:
+      return true;
+  }
   return false;  // TODO
 }
 
