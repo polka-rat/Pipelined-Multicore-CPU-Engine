@@ -325,6 +325,7 @@ class Core {
     if (!ex_mem_.valid) return;
 
     next_mem_wb_ = ex_mem_;
+    
     // TODO
   }
 
@@ -363,7 +364,26 @@ class Core {
 
     if (front_action_ == FrontAction::kRedirect || !if_id_.valid) return;
 
-    // TODO
+    if (hazard_control_->MustStall(if_id_, id_ex_, ex_mem_)) {
+      front_action_ = FrontAction::kHold;
+      snapshots_[StageIndex(StageRole::kDecode)].action = "STALL";
+      return;
+    }
+
+    next_id_ex_.valid = true;
+    next_id_ex_.instruction = if_id_.instruction;
+    next_id_ex_.first = ReadsRs1(if_id_.instruction.opcode)
+                            ? machine_->ReadRegister(if_id_.instruction.rs1)
+                            : 0;
+    next_id_ex_.second = ReadsRs2(if_id_.instruction.opcode)
+                             ? machine_->ReadRegister(if_id_.instruction.rs2)
+                             : 0;
+    next_id_ex_.control = main_control_->Decode(if_id_.instruction.opcode);
+    snapshots_[StageIndex(StageRole::kDecode)].action = "DECODE";
+
+    if (IsControl(if_id_.instruction.opcode)) {
+      front_action_ = FrontAction::kStop;
+    }
   }
 
   void Fetch() {
