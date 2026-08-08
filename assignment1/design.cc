@@ -84,7 +84,7 @@ class Alu : public TrackedUnit {
       case AluOp::kAdd:
         return left + right;
       case AluOp::kSub:
-        return left-right;  // TODO
+        return left -right;  // TODO
       case AluOp::kAnd:
         return left & right;  // TODO
       case AluOp::kOr:
@@ -145,6 +145,7 @@ class MainControl : public TrackedUnit {
 
       case Opcode::kBeq:
       case Opcode::kBne:
+        // control.use_immediate = true; // DOUBT
         control.alu_op = AluOp::kSub;
         break;  // TODO
 
@@ -153,6 +154,7 @@ class MainControl : public TrackedUnit {
         break;  // TODO
 
       case Opcode::kJ:
+        // control.use_immediate = true; //DOUBT
       case Opcode::kNop:
         break;
     }
