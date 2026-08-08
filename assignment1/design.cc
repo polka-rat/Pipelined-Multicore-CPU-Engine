@@ -327,8 +327,14 @@ class Core {
     if (!ex_mem_.valid) return;
 
     next_mem_wb_ = ex_mem_;
-    
-    // TODO
+    if (ex_mem_.control.mem_write) {
+      machine_->StoreWord(ex_mem_.result, ex_mem_.store_value);
+    }
+    // TODO: on ex_mem_.control.mem_read, machine_->LoadWord(...) and
+    // overwrite next_mem_wb_.result with it.
+    else if (ex_mem_.control.mem_read) {
+      // next_ex_mem_.result = machine_->LoadWord(); // DOUBT: not sure what should be the input for LoadWord.
+    }
   }
 
   void Execute() {
