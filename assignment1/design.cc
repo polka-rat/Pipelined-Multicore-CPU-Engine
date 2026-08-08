@@ -168,19 +168,23 @@ class HazardControl : public TrackedUnit {
   bool MustStall(const Latch& consumer, const Latch& id_ex,
                  const Latch& ex_mem) {
     Touch();
-    (void)consumer;
-    (void)id_ex;
-    (void)ex_mem;
-    return false;  // TODO
+    const Instruction& instruction = consumer.instruction;
+    bool uses_rs1 = ReadsRs1(instruction.opcode);
+    bool uses_rs2 = ReadsRs2(instruction.opcode);
+
+    return HasDependency(instruction.rs2, uses_rs2, id_ex) ||
+           HasDependency(instruction.rs1, uses_rs1, id_ex) ||
+           HasDependency(instruction.rs1, uses_rs1, ex_mem) ||
+           HasDependency(instruction.rs2, uses_rs2, ex_mem);
+    // TODO: also check rs1 against id_ex, and both rs1/rs2 against ex_mem --
+    // no forwarding means ex_mem is a real hazard source too, not just id_ex.
   }
 
  private:
   bool HasDependency(int source, bool source_is_used,
                      const Latch& producer) const {
-    (void)source;
-    (void)source_is_used;
-    (void)producer;
-    return false;  // TODO
+    if (!source_is_used || source == 0) return false;
+    return false;  // TODO: does `producer` actually write `source`?
   }
 };
 
