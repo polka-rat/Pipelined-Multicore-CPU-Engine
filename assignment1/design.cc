@@ -366,7 +366,7 @@ class Core {
         Redirect(static_cast<std::uint32_t>(instruction.immediate));
         break;
       case Opcode::kHalt:
-        next_halt_pending_ = true;
+        // next_halt_pending_ = true; // Already done in decode() with newer design.cc
         break;
       default:
         break;
