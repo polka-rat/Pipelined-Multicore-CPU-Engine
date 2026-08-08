@@ -326,14 +326,21 @@ class Core {
     next_mem_wb_ = Latch();
     if (!ex_mem_.valid) return;
 
-    next_mem_wb_ = ex_mem_;
+    next_mem_wb_ = ex_mem_;// Always done for all of the instructions (For LW it shouldnt go to the next stage ...)
     if (ex_mem_.control.mem_write) {
       machine_->StoreWord(ex_mem_.result, ex_mem_.store_value);
     }
     // TODO: on ex_mem_.control.mem_read, machine_->LoadWord(...) and
     // overwrite next_mem_wb_.result with it.
-    else if (ex_mem_.control.mem_read) {
+     else if (ex_mem_.control.reg_write)
+     {
+        next_mem_wb_ = ex_mem_;
+     } 
+     else if (ex_mem_.control.mem_read) 
+     {
       // next_ex_mem_.result = machine_->LoadWord(); // DOUBT: not sure what should be the input for LoadWord.
+       next_mem_wb_ = ex_mem_;
+       next_mem_wb_.result = machine_->LoadWord(ex_mem_.result);
     }
   }
 
