@@ -342,14 +342,33 @@ class Core {
 
     const Instruction& instruction = id_ex_.instruction;
 
-    // TODO
+    //TODO
+    const std::uint32_t right = id_ex_.control.use_immediate
+                                    ? static_cast<std::uint32_t>(instruction.immediate)
+                                    : id_ex_.second;
+    next_ex_mem_.result =
+        alu_->Run(id_ex_.control.alu_op, id_ex_.first, right);
 
-    if (instruction.opcode == Opcode::kBeq) {
-      Redirect(id_ex_.first == id_ex_.second
-                   ? static_cast<std::uint32_t>(instruction.immediate)
-                   : instruction.pc + 4);
+    switch (instruction.opcode) {
+      case Opcode::kBeq:
+        Redirect(id_ex_.first == id_ex_.second
+                     ? static_cast<std::uint32_t>(instruction.immediate)
+                     : instruction.pc + 4);
+        break;
+      case Opcode::kBne:
+        Redirect(id_ex_.first != id_ex_.second
+                     ? static_cast<std::uint32_t>(instruction.immediate)
+                     : instruction.pc + 4);
+        break;
+      case Opcode::kJ:
+        Redirect(static_cast<std::uint32_t>(instruction.immediate));
+        break;
+      case Opcode::kHalt:
+        next_halt_pending_ = true;
+        break;
+      default:
+        break;
     }
-    // TODO
   }
 
   void Redirect(std::uint32_t new_pc) {
@@ -364,6 +383,7 @@ class Core {
 
     if (front_action_ == FrontAction::kRedirect || !if_id_.valid) return;
 
+    //TODO
     if (hazard_control_->MustStall(if_id_, id_ex_, ex_mem_)) {
       front_action_ = FrontAction::kHold;
       snapshots_[StageIndex(StageRole::kDecode)].action = "STALL";
