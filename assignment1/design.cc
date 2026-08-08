@@ -418,11 +418,17 @@ class Core {
     // TODO: on a control instruction (IsControl), stop fetching and call
     // machine_->AddControlStall(). HALT needs one more bit set somewhere
     // before it can actually drain the pipeline.
-    if (IsControl(instruction.opcode)) {
-      front_action_ = FrontAction::kStop;
-      machine_->AddControlStall();
-      next_halt_pending_ = (instruction.opcode == Opcode::kHalt);
-    }
+    if (IsControl(instruction.opcode) ||  instruction.opcode == Opcode::kHalt) {
+      if (IsControl(instruction.opcode)){
+      front_action_ = FrontAction::kHold;//added to hold and not kstop, maybe the current instruction is the one to which the branch resolves...........
+     // machine_->AddControlStall();Stall is counted in the execute stage as till decode we dont know if the brnach is taken elsewhere or not...........
+      } 
+    
+     if (instruction.opcode == Opcode::kHalt) {
+        next_halt_pending_ = true;
+   
+     // next_halt_pending_ = (instruction.opcode == Opcode::kHalt); this would have never been executed ..........
+     }
   }
 
   void Fetch() {
