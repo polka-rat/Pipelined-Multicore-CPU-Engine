@@ -384,27 +384,31 @@ class Core {
     next_id_ex_ = Latch();
 
     if (front_action_ == FrontAction::kRedirect || !if_id_.valid) return;
-
-    //TODO
+    const Instruction& instruction = if_id_.instruction;
+    
+    // TODO: on a hazard (hazard_control_->MustStall), hold the front end
+    // and call machine_->AddDataStall().
     if (hazard_control_->MustStall(if_id_, id_ex_, ex_mem_)) {
       front_action_ = FrontAction::kHold;
-      snapshots_[StageIndex(StageRole::kDecode)].action = "STALL";
+      // snapshots_[StageIndex(StageRole::kDecode)].action = "STALL";
+      machine_->AddDataStall();
       return;
     }
-
+    
     next_id_ex_.valid = true;
-    next_id_ex_.instruction = if_id_.instruction;
-    next_id_ex_.first = ReadsRs1(if_id_.instruction.opcode)
-                            ? machine_->ReadRegister(if_id_.instruction.rs1)
-                            : 0;
-    next_id_ex_.second = ReadsRs2(if_id_.instruction.opcode)
-                             ? machine_->ReadRegister(if_id_.instruction.rs2)
-                             : 0;
-    next_id_ex_.control = main_control_->Decode(if_id_.instruction.opcode);
-    snapshots_[StageIndex(StageRole::kDecode)].action = "DECODE";
+    next_id_ex_.instruction = instruction;
+    next_id_ex_.first = machine_->ReadRegister(instruction.rs1);
+    next_id_ex_.second = machine_->ReadRegister(instruction.rs2);
+    next_id_ex_.control = main_control_->Decode(instruction.opcode);
+    // snapshots_[StageIndex(StageRole::kDecode)].action = "DECODE";
 
-    if (IsControl(if_id_.instruction.opcode)) {
+    // TODO: on a control instruction (IsControl), stop fetching and call
+    // machine_->AddControlStall(). HALT needs one more bit set somewhere
+    // before it can actually drain the pipeline.
+    if (IsControl(instruction.opcode)) {
       front_action_ = FrontAction::kStop;
+      machine_->AddControlStall();
+      next_halt_pending_ = (instruction.opcode == Opcode::kHalt);
     }
   }
 
