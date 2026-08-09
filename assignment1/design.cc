@@ -184,7 +184,13 @@ class HazardControl : public TrackedUnit {
   bool HasDependency(int source, bool source_is_used,
                      const Latch& producer) const {
     if (!source_is_used || source == 0) return false;
-    return false;  // TODO: does `producer` actually write `source`?
+    if (!producer.valid || !producer.control.reg_write) return false;
+    if (producer.instruction.rd == 0) return false;
+
+    return producer.instruction.rd == source;
+    
+
+    // return false;  // TODO: does `producer` actually write `source`?
   }
 };
 
@@ -427,13 +433,13 @@ class Core {
       front_action_ = FrontAction::kHold;//added to hold and not kstop, maybe the current instruction is the one to which the branch resolves...........
      // machine_->AddControlStall();Stall is counted in the execute stage as till decode we dont know if the brnach is taken elsewhere or not...........
       } 
-    }
-    
-     if (instruction.opcode == Opcode::kHalt) {
+      
+      if (instruction.opcode == Opcode::kHalt) {
         next_halt_pending_ = true;
-   
-     // next_halt_pending_ = (instruction.opcode == Opcode::kHalt); this would have never been executed ..........
-     }
+        
+        // next_halt_pending_ = (instruction.opcode == Opcode::kHalt); this would have never been executed ..........
+      }
+    }
   }
 
   void Fetch() {
