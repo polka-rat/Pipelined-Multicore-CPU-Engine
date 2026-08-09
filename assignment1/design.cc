@@ -427,6 +427,7 @@ class Core {
       front_action_ = FrontAction::kHold;//added to hold and not kstop, maybe the current instruction is the one to which the branch resolves...........
      // machine_->AddControlStall();Stall is counted in the execute stage as till decode we dont know if the brnach is taken elsewhere or not...........
       } 
+    }
     
      if (instruction.opcode == Opcode::kHalt) {
         next_halt_pending_ = true;
