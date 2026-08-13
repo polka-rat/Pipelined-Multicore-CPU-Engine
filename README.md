@@ -1,6 +1,6 @@
 # CS6600-18-pipesim
 
-A single-issue, five-stage, in-order processor simulator for the CS6600 Computer Architecture assignment. The simulated pipeline has the following stages:
+A single-issue, 5 stage, in-order processor simulator for the CS6600 Computer Architecture assignment. The simulated pipeline has the following stages:
 
 ```text
 IF -> ID -> EX -> MEM -> WB
