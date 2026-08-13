@@ -437,7 +437,7 @@ class Core {
     }
 
     if (instruction.opcode == Opcode::kHalt) {
-      next_halt_pending_ = true;
+      next_halt_pending_ = true; 
     }
   }
 
