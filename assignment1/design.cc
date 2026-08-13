@@ -342,11 +342,11 @@ class Core {
     }
     // TODO: on ex_mem_.control.mem_read, machine_->LoadWord(...) and
     // overwrite next_mem_wb_.result with it.
-     else if (ex_mem_.control.reg_write)
+      if (ex_mem_.control.reg_write)
      {
         next_mem_wb_ = ex_mem_;
      } 
-     else if (ex_mem_.control.mem_read) 
+      if (ex_mem_.control.mem_read) 
      {
       // next_ex_mem_.result = machine_->LoadWord(); // DOUBT: not sure what should be the input for LoadWord.
        next_mem_wb_ = ex_mem_;
