@@ -145,7 +145,8 @@ class MainControl : public TrackedUnit {
 
       case Opcode::kBeq:
       case Opcode::kBne:
-        // control.use_immediate = true; // DOUBT
+        control.use_immediate = true; 
+        //TODO
         control.alu_op = AluOp::kSub;
         break;  // TODO
 
@@ -154,7 +155,8 @@ class MainControl : public TrackedUnit {
         break;  // TODO
 
       case Opcode::kJ:
-        // control.use_immediate = true; //DOUBT
+        control.use_immediate = true; 
+        //TODO
       case Opcode::kNop:
         break;
     }
