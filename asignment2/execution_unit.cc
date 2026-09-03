@@ -40,7 +40,31 @@ std::optional<ExecutionResult> ExecutionPipeline::OutputIntent()const{
     // throw std::runtime_error("ExecutionPipeline::OutputIntent: TODO(A2-EXEC-02)");
 }
 
-bool ExecutionPipeline::CanAccept(std::uint64_t dispatch_boundary,bool output_will_be_consumed)const{(void)dispatch_boundary;(void)output_will_be_consumed;throw std::runtime_error("ExecutionPipeline::CanAccept: TODO(A2-EXEC-03)");}
+//Added
+bool ExecutionPipeline::CanAccept(std::uint64_t dispatch_boundary,bool output_will_be_consumed)const{
+    // (void)dispatch_boundary;(void)output_will_be_consumed;
+
+    // if(!impl_->begun) throw std::runtime_error("execution pipeline hasnt even begun yet");
+    
+    if (dispatch_boundary<impl_->next_legal_current) return false;
+
+    auto temp_current = impl_->current;
+
+    if (output_will_be_consumed) temp_current.back().reset();
+    
+
+    for (std::size_t i = temp_current.size(); i-- > 1;) {
+        if (temp_current[i - 1].has_value() && !temp_current[i].has_value()) {
+            temp_current[i] = temp_current[i - 1];
+            temp_current[i - 1].reset();
+        }
+    }
+
+    return !temp_current.front().has_value();
+
+    // throw std::runtime_error("ExecutionPipeline::CanAccept: TODO(A2-EXEC-03)");
+    
+}
 
 void ExecutionPipeline::Operate(std::uint64_t current_boundary,const std::optional<ExecutionOperation>& dispatch,bool consume_output){if(!impl_->begun||impl_->operated)throw std::runtime_error("execution pipeline Operate lifecycle violation");(void)current_boundary;(void)dispatch;(void)consume_output;throw std::runtime_error("ExecutionPipeline::Operate: TODO(A2-EXEC-04)");}
 
