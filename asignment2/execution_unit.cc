@@ -107,9 +107,53 @@ void ExecutionPipeline::Operate(std::uint64_t current_boundary,const std::option
     // throw std::runtime_error("ExecutionPipeline::Operate: TODO(A2-EXEC-04)");
 }
 
-void ExecutionPipeline::Commit(){throw std::runtime_error("ExecutionPipeline::Commit: TODO(A2-EXEC-05)");}
+//Added 
+void ExecutionPipeline::Commit(){
+    if(!impl_->begun || !impl_->operated) throw std::runtime_error("execution pipeline Commit lifecycle violation");
+    impl_->begun=false;
+    impl_->operated=false;
+    impl_->current=impl_->next;
+    impl_->next_legal_current=impl_->next_legal_next;
 
-ExecutionSnapshot ExecutionPipeline::Snapshot()const{throw std::runtime_error("ExecutionPipeline::Snapshot: TODO(A2-EXEC-05)");}
+    // throw std::runtime_error("ExecutionPipeline::Commit: TODO(A2-EXEC-05)");
+}
 
-bool ExecutionPipeline::HasWork()const{throw std::runtime_error("ExecutionPipeline::HasWork: TODO(A2-EXEC-05)");}
+//Added
+ExecutionSnapshot ExecutionPipeline::Snapshot()const{
+    ExecutionSnapshot snapshot;
+    snapshot.kind=impl_->kind;
+    snapshot.next_legal_dispatch_boundary=impl_->next_legal_current;
+    for(std::size_t i=0;i<impl_->current.size();++i){
+        ExecutionStageSnapshot stage_snapshot;
+        stage_snapshot.stage=i;
+        if(impl_->current[i].has_value()){
+            const ExecutionOperation operation=impl_->current[i].value();
+            stage_snapshot.valid=true;
+            stage_snapshot.sequence=operation.sequence;
+            stage_snapshot.pc=operation.instruction.pc;
+            stage_snapshot.opcode=OpcodeName(operation.instruction.opcode);
+            stage_snapshot.unit=ExecutionUnitKindName(impl_->kind);
+            stage_snapshot.dispatch_boundary=operation.dispatch_boundary;
+            stage_snapshot.nominal_result_boundary=execution_internal::CheckedResultBoundary(operation.dispatch_boundary,impl_->config.latency);
+            stage_snapshot.lhs=operation.lhs;
+            stage_snapshot.rhs=operation.rhs;
+            stage_snapshot.store_value=operation.store_value;
+            stage_snapshot.destination=operation.instruction.rd;
+            stage_snapshot.writes_register=execution_internal::WritesRegister(operation.instruction.opcode,operation.instruction.rd);
+        }
+        snapshot.stages.push_back(stage_snapshot);
+    }
+
+    return snapshot;
+    // throw std::runtime_error("ExecutionPipeline::Snapshot: TODO(A2-EXEC-05)");
+}
+
+//Added
+bool ExecutionPipeline::HasWork()const{
+    for(const auto& stage:impl_->current){
+        if(stage.has_value()) return true;
+    }
+    return false;
+    // throw std::runtime_error("ExecutionPipeline::HasWork: TODO(A2-EXEC-05)");
+}
 }
