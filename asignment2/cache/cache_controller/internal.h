@@ -107,8 +107,17 @@ class CacheController::Impl {
   // line_size and sets. Return block base, set, tag, offset. See SPEC.md/
   // ABI.md for the exact formula.
   AddressFields MapAddress(std::uint32_t address) const {
-    (void)address;
-    throw std::runtime_error("CacheController::MapAddress: TODO(A2-CACHE-02)");
+    
+     AddressFields fields;
+
+    fields.offset = address % config_.line_size;
+    fields.block = address - fields.offset;
+
+    const std::uint32_t block_number = address / config_.line_size;
+    fields.set = block_number % config_.sets;
+    fields.tag = block_number / config_.sets;
+
+    return fields;
   }
 
   void ValidateInbound(const CacheRequest& request) const {
@@ -256,8 +265,7 @@ class CacheController::Impl {
   // TODO(A2-CACHE-05): true iff a granted upper response this cycle would
   // drain current OUTPUT (used to plan same-cycle OUTPUT reuse).
   bool OutputWillDrain(bool response_granted) const {
-    (void)response_granted;
-    throw std::runtime_error("CacheController::OutputWillDrain: TODO(A2-CACHE-05)");
+    return current_output_.valid && response_granted;
   }
 
   // TODO(A2-CACHE-07/08/10): the parallel LOOKUP decision -- hit, MSHR
@@ -328,7 +336,128 @@ class CacheController::Impl {
   // writeback; select the minimum (arrival_order, response id). Must not
   // mutate state.
   ResponseChoice SelectResponse() const {
-    throw std::runtime_error("CacheController::SelectResponse: TODO(A2-CACHE-04)");
+   // throw std::runtime_error("CacheController::SelectResponse: TODO(A2-CACHE-04)");
+    ResponseChoice best;
+
+    auto consider = [&](const ResponseChoice& candidate) {
+        if (best.owner == ResponseOwner::kNone ||
+            ResponseLess(candidate, best)) {
+            best = candidate;
+        }
+    };
+
+    // Current OUTPUT-stage response.
+    if (current_output_.valid) {
+        ResponseChoice candidate;
+        candidate.owner = ResponseOwner::kOutput;
+        candidate.response = current_output_.response;
+        candidate.arrival_order = current_output_.arrival_order;
+        consider(candidate);
+    }
+
+    // Oldest ready, unsent waiter from each responding MSHR.
+    for (std::size_t i = 0; i < current_mshrs_.size(); ++i) {
+        const MshrEntry& mshr = current_mshrs_[i];
+
+        if (!mshr.valid || mshr.state != OwnerState::kResponding) {
+            continue;
+        }
+
+        int oldest = -1;
+
+        for (std::size_t j = 0; j < mshr.waiters.size(); ++j) {
+            const MshrWaiter& waiter = mshr.waiters[j];
+
+            if (!waiter.response_ready || waiter.response_sent) {
+                continue;
+            }
+
+            if (oldest < 0 ||
+                std::tie(waiter.arrival_order, waiter.request_id) <
+                    std::tie(mshr.waiters[oldest].arrival_order,
+                             mshr.waiters[oldest].request_id)) {
+                oldest = static_cast<int>(j);
+            }
+        }
+
+        if (oldest >= 0) {
+            const MshrWaiter& waiter =
+                mshr.waiters[static_cast<std::size_t>(oldest)];
+
+            ResponseChoice candidate;
+            candidate.owner = ResponseOwner::kMshr;
+            candidate.entry = i;
+            candidate.waiter = static_cast<std::size_t>(oldest);
+            candidate.arrival_order = waiter.arrival_order;
+
+            candidate.response.id = waiter.request_id;
+            candidate.response.origin_id = waiter.origin_id;
+            candidate.response.sequence = waiter.sequence;
+            candidate.response.generation = waiter.generation;
+            candidate.response.address = waiter.address;
+            candidate.response.size = waiter.size;
+
+            if (waiter.type == RequestType::kRead) {
+                candidate.response.type = ResponseType::kReadData;
+                candidate.response.data = waiter.response_data;
+            } else {
+                candidate.response.type = ResponseType::kWriteAck;
+                candidate.response.data.clear();
+            }
+
+            consider(candidate);
+        }
+    }
+
+    // Oldest unsent acknowledgement waiter from each ACK_READY writeback.
+    for (std::size_t i = 0; i < current_writebacks_.size(); ++i) {
+        const WritebackEntry& writeback = current_writebacks_[i];
+
+        if (!writeback.valid ||
+            writeback.state != OwnerState::kAckReady) {
+            continue;
+        }
+
+        int oldest = -1;
+
+        for (std::size_t j = 0; j < writeback.waiters.size(); ++j) {
+            const WritebackAckWaiter& waiter = writeback.waiters[j];
+
+            if (waiter.response_sent) {
+                continue;
+            }
+
+            if (oldest < 0 ||
+                std::tie(waiter.arrival_order, waiter.request_id) <
+                    std::tie(writeback.waiters[oldest].arrival_order,
+                             writeback.waiters[oldest].request_id)) {
+                oldest = static_cast<int>(j);
+            }
+        }
+
+        if (oldest >= 0) {
+            const WritebackAckWaiter& waiter =
+                writeback.waiters[static_cast<std::size_t>(oldest)];
+
+            ResponseChoice candidate;
+            candidate.owner = ResponseOwner::kWriteback;
+            candidate.entry = i;
+            candidate.waiter = static_cast<std::size_t>(oldest);
+            candidate.arrival_order = waiter.arrival_order;
+
+            candidate.response.id = waiter.request_id;
+            candidate.response.origin_id = waiter.origin_id;
+            candidate.response.sequence = waiter.sequence;
+            candidate.response.generation = waiter.generation;
+            candidate.response.address = waiter.address;
+            candidate.response.size = waiter.size;
+            candidate.response.type = ResponseType::kWritebackAck;
+            candidate.response.data.clear();
+
+            consider(candidate);
+        }
+    }
+    return best;
   }
 
   // TODO(A2-CACHE-06): true iff request's range overlaps any
@@ -357,8 +486,13 @@ class CacheController::Impl {
   // SelectResponse() (above) does the candidate selection; this method
   // just extracts its response if any.
   std::optional<CacheResponse> ResponseIntent() const {
-    throw std::runtime_error(
-        "CacheController::ResponseIntent: TODO(A2-CACHE-04)");
+    const ResponseChoice choice = SelectResponse();
+
+    if (choice.owner == ResponseOwner::kNone) {
+        return std::nullopt;
+    }
+
+    return choice.response;
   }
 
   // TODO(A2-CACHE-06): available (already implemented, call from here):
