@@ -45,7 +45,26 @@ namespace pipesim::design_internal {
         StageSnapshot& snapshot=snapshots_[static_cast<std::size_t>(StageRole::kMemory)]; 
         snapshot=StageSnapshot(); 
         snapshot.action="EMPTY"; 
-        throw std::runtime_error("Core::Memory: TODO(A2-DESIGN-05)"); 
+
+        auto result = pipelines_[static_cast<std::size_t>(ExecutionUnitKind::kAgu)]->OutputIntent();
+        if (!result.has_value()) {
+            return;
+        }
+
+        ExecutionResult& executionResult = result.value();
+
+        snapshot.valid = true;
+        snapshot.pc = executionResult.instruction.pc;
+        snapshot.opcode = OpcodeName(executionResult.instruction.opcode);
+
+        if (machine_->TryIssueData(executionResult.sequence,
+                                   executionResult.address,
+                                   executionResult.memory_write,
+                                   executionResult.store_value)) {
+                                    consume_output_[static_cast<std::size_t>(ExecutionUnitKind::kAgu)] = true;
+                                   }
+
+        // throw std::runtime_error("Core::Memory: TODO(A2-DESIGN-05)"); 
     }
 
     void Core::Execute(){ 
