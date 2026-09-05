@@ -47,6 +47,7 @@ class TreePlru final : public ReplacementPolicy {
 
   void BeginCycle() override {
     if(begun_) throw std::runtime_error("Tree-PLRU BeginCycle called twice without commit");
+    if(event_planned_) throw std::runtime_error("Tree-PLRU BeginCycle called after event planned");
     begun_ = true;
     event_planned_ = false;
     planned_= current_;
@@ -151,7 +152,8 @@ class TreePlru final : public ReplacementPolicy {
       }
     }
 
-    event_planned_=true;
+    OnInsert(set,left_lim);
+    // event_planned_=true;
     return left_lim;
     // throw std::runtime_error("TreePlru::SelectVictim: TODO(A2-REPL-01)");
   }
@@ -237,44 +239,111 @@ class Srrip final : public ReplacementPolicy {
         planned_(sets, std::vector<std::uint8_t>(ways, 3)) {}
 
   void Reset() override {
-    throw std::runtime_error("Srrip::Reset: TODO(A2-REPL-02)");
+    current_.assign(sets_,std::vector<std::uint8_t>(ways_,3));
+    planned_.assign(sets_,std::vector<std::uint8_t>(ways_,3));
+
+    begun_ = false;
+    event_planned_ = false;
+    // throw std::runtime_error("Srrip::Reset: TODO(A2-REPL-02)");
   }
 
   void BeginCycle() override {
-    throw std::runtime_error("Srrip::BeginCycle: TODO(A2-REPL-02)");
+    // (void)set;
+    if(begun_) throw std::runtime_error("Tree-PLRU BeginCycle called twice without commit");
+    if(event_planned_) throw std::runtime_error("Tree-PLRU BeginCycle called after event planned");
+    begun_ = true;
+    event_planned_ = false;
+    planned_= current_;
+    
+    // throw std::runtime_error("Srrip::BeginCycle: TODO(A2-REPL-02)");
   }
 
   void OnHit(std::uint32_t set, std::uint32_t way) override {
-    (void)set;
-    (void)way;
-    throw std::runtime_error("Srrip::OnHit: TODO(A2-REPL-02)");
+    // (void)set;
+    // (void)way;
+    if(!begun_) throw std::runtime_error("SRRIP OnHit without begin");
+    if(event_planned_) throw std::runtime_error("SRRIP OnHit called after event planned");
+    CheckCoordinates(set,way,sets_,ways_);
+    planned_[set][way] = 0;
+
+    event_planned_ = true;
+
+    // throw std::runtime_error("Srrip::OnHit: TODO(A2-REPL-02)");
   }
 
   void OnInsert(std::uint32_t set, std::uint32_t way) override {
-    (void)set;
-    (void)way;
-    throw std::runtime_error("Srrip::OnInsert: TODO(A2-REPL-02)");
+    // (void)set;
+    // (void)way;
+    
+    if(!begun_) throw std::runtime_error("SRRIP OnInsert without begin");
+    if(event_planned_) throw std::runtime_error("SRRIP OnInsert called after event planned");
+    CheckCoordinates(set,way,sets_,ways_);
+    planned_[set][way] = 2;
+
+    event_planned_ = true;
+
+    // throw std::runtime_error("Srrip::OnHit: TODO(A2-REPL-02)");
   }
 
   int SelectVictim(std::uint32_t set,
                    const std::vector<bool>& eligible) override {
-    (void)set;
-    (void)eligible;
-    throw std::runtime_error("Srrip::SelectVictim: TODO(A2-REPL-02)");
+    // (void)set;
+    // (void)way;
+    
+    if(eligible.size()!=ways_) throw std::runtime_error("SRRIP SelectVictim eligible size mismatch");
+    if(std::find(eligible.begin(),eligible.end(),true)==eligible.end()) throw std::runtime_error("SRRIP SelectVictim: no eligible ways");
+    if(!begun_) throw std::runtime_error("SRRIP SelectVictim without begin");
+    if(event_planned_) throw std::runtime_error("SRRIP SelectVictim called after event planned");
+    CheckCoordinates(set,0,sets_,ways_);
+    int max_val=-1,max_index=-1;
+
+    for(int i=0;i<ways_;i++){
+      if(eligible[i] && planned_[set][i]>max_val){
+        max_val=planned_[set][i];
+        max_index=i;
+      }
+    }
+
+    if(max_val==-1) throw std::runtime_error("SRRIP SelectVictim: no eligible ways");
+
+    int diff=3-max_val;
+    if(diff>0){
+      for(std::uint32_t i=0;i<ways_;i++) planned_[set][i]=std::min(3,planned_[set][i]+diff);
+    }
+    event_planned_ = true;
+    return max_index;
+
+    // throw std::runtime_error("Srrip::OnHit: TODO(A2-REPL-02)");
   }
 
   int PeekVictim(std::uint32_t set,
                  const std::vector<bool>& eligible) const override {
-    (void)set;
-    (void)eligible;
-    throw std::runtime_error("Srrip::PeekVictim: TODO(A2-REPL-02)");
+    // (void)set;
+    // (void)way;
+    if(eligible.size()!=ways_) throw std::runtime_error("SRRIP PeekVictim eligible size mismatch");
+    if(std::find(eligible.begin(),eligible.end(),true)==eligible.end()) throw std::runtime_error("SRRIP PeekVictim: no eligible ways");
+    CheckCoordinates(set,0,sets_,ways_);
+    int max_val=-1,max_index=-1;
+
+    for(std::uint32_t i=0;i<ways_;i++){
+      if(eligible[i] && current_[set][i]>max_val){
+        max_val=current_[set][i];
+        max_index=i;
+      }
+    }
+
+    if(max_val==-1) throw std::runtime_error("SRRIP SelectVictim: no eligible ways");
+    return max_index;
+
+    // throw std::runtime_error("Srrip::OnHit: TODO(A2-REPL-02)");
   }
 
   std::vector<std::uint32_t> DebugState(std::uint32_t set) const override {
-    (void)set;
-
+    // (void)set;
+    CheckCoordinates(set, 0, sets_ , ways_);
+    return std::vector<std::uint32_t>(current_[set].begin(), current_[set].end());
     
-    throw std::runtime_error("Srrip::DebugState: TODO(A2-REPL-02)");
+    // throw std::runtime_error("Srrip::DebugState: TODO(A2-REPL-02)");
   }
 
   void Commit() override {
