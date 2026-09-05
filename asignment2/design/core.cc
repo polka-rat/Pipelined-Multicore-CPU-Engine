@@ -25,7 +25,20 @@ namespace pipesim::design_internal {
 
     void Core::Writeback() { 
         BeginCycle(); 
-        throw std::runtime_error("Core::Writeback: TODO(A2-DESIGN-06)"); 
+        StageSnapshot& snapshot=snapshots_[static_cast<std::size_t>(StageRole::kWriteback)];
+        snapshot = StageSnapshot();
+        snapshot.action = "EMPTY";
+        
+        Retirement retirement;
+        if (!machine_->PeekRetirement(&retirement)) return;
+
+        snapshot.valid = true;
+        snapshot.pc = retirement.instruction.pc;
+        snapshot.opcode = OpcodeName(retirement.instruction.opcode);
+
+        machine_->ApplyRetirement(retirement);
+
+        // throw std::runtime_error("Core::Writeback: TODO(A2-DESIGN-06)"); 
     }
 
     void Core::Memory(){ 
@@ -46,6 +59,7 @@ namespace pipesim::design_internal {
         StageSnapshot& snapshot=snapshots_[static_cast<std::size_t>(StageRole::kDecode)]; 
         snapshot=StageSnapshot(); 
         snapshot.action="EMPTY"; 
+        
         throw std::runtime_error("Core::Decode: TODO(A2-DESIGN-03)"); 
     }
 
@@ -55,8 +69,9 @@ namespace pipesim::design_internal {
         snapshot.pc=pc_; 
 
         // Check if fetch is stopped due to pending CONTROL resolution
-        if (fetch_stopped_ == true) {
+        if (fetch_stopped_) {
             next_pc_ = pc_;
+            next_if_id_ = (if_id_consumed_) ? FrontendLatch():if_id_;
             return;
         } 
         // If Fetch is running, run TryIssueFetch()
@@ -72,6 +87,7 @@ namespace pipesim::design_internal {
             if (peekFetchedResult) {
                 // Received an instruction from L1I
                 machine_->ConsumeFetched();
+                next_if_id_ = FrontendLatch();
                 next_if_id_.valid = true;
                 next_if_id_.fetched = fetchedInstruction;
                 next_pc_ = pc_ + 4;
