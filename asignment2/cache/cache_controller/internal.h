@@ -728,25 +728,14 @@ return;
     }
   }
 
-  // TODO(A2-CACHE-09/10): for an owned fill -- install the complete line
-  // into its already-reserved way, replay every waiter once in arrival
-  // order at byte granularity (capturing each load's bytes at its own
-  // replay point, applying each store's bytes), mark dirty if any waiter
-  // wrote, call replacement_->OnInsert exactly once. For an owned
-  // writeback ack -- transition ACK_READY (or free immediately if it had
-  // no waiters).
-  // Existing helpers: FindMshrByLowerId, FindWritebackByLowerId, ValidateEcho.
+  
   void ApplyLowerResponse(const CacheResponse& response) {
     (void)response;
     throw std::runtime_error(
         "CacheController::ApplyLowerResponse: TODO(A2-CACHE-09)");
   }
 
-  // TODO(A2-CACHE-10/11): insert a new writeback entry, or merge into the
-  // transitive-overlap survivor chosen by a matching PlanWriteback() call
-  // -- oldest entry/ID survives, bytes applied in entry-age order with the
-  // newly-accepted bytes winning any overlap (this call's data is newest),
-  // combined waiters bounded and sorted by (arrival_order, request id).
+ 
   void InsertWriteback(std::uint32_t address,
                        const std::vector<std::uint8_t>& data,
                        std::uint64_t arrival_order,
@@ -816,14 +805,7 @@ return;
     next_lookup_ = PipelineEntry();
   }
 
-  // TODO(A2-CACHE-08): allocate the new primary MSHR at the planned victim
-  // way, reserving it; if the victim line is valid+dirty, insert its
-  // writeback (allocating a second id in the same batch when a new
-  // writeback owner is created, via transaction_ids_->ReserveBatch);
-  // create one full-local-line lower kRead with one retained id; update
-  // evictions/dirty_evictions/primary_misses exactly once each as
-  // applicable; clear LOOKUP.
-  // Existing helpers: SelectVictim, PeekVictim, MakeMshrWaiter, InsertWriteback.
+  
   void ApplyMshrAllocation(const LookupDecision& decision,
                            int granted_writeback) {
     (void)decision;
@@ -844,10 +826,7 @@ return;
     //     "CacheController::ApplyWritebackForward: TODO(A2--CACHE-10)");
   }
 
-  // TODO(A2--CACHE-13): increment exactly the one stats counter
-  // corresponding to `stall` (kNone/kOutput count nothing). See SPEC.md's
-  // stall-precedence chain for which counter fires when several reasons
-  // could apply.
+  
   void CountLookupStall(LookupStall stall) {
     (void)stall;
     switch (stall)
@@ -928,15 +907,7 @@ RequestChoice choice = SelectLowerRequest();
 
     
 
-  // TODO(A2-CACHE-12): the single mutating call per cycle. Apply only the
-  // transfers `grants` authorizes, computed from ONE consistent snapshot of
-  // current_* state: upper-response removal (ApplyResponseGrant), owned
-  // fill/writeback-ack installation (ApplyLowerResponse), at most one
-  // parallel LOOKUP decision or its exact stall (DecideLookup +
-  // ApplyHit/ApplyMshrMerge/ApplyMshrAllocation/ApplyWritebackForward/
-  // CountLookupStall -- note a fill takes the LOOKUP port, so it must not
-  // additionally run), back-to-front INDEX->LOOKUP movement plus admission
-  // of upper_request into INDEX, and the granted lower-request owner
+  st into INDEX, and the granted lower-request owner
   // transition (ApplyLowerRequestGrant). Update every counter exactly
   // once, at its defined event point. Throw for any grant referring to a
   // nonexistent candidate, or any owner/echo mismatch -- see ABI.md's
