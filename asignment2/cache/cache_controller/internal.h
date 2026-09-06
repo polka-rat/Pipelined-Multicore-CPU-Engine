@@ -362,21 +362,22 @@ class CacheController::Impl {
   // TODO(A2-CACHE-10)
   WritebackAckWaiter MakeWritebackWaiter(
       const PipelineEntry& pipeline) const {
-    WritebackAckWaiter waiter;
 
-    const CacheRequest& request = pipeline.request;
+      WritebackAckWaiter waiter;
 
-    waiter.request_id = request.id;
-    waiter.origin_id = request.origin_id;
-    waiter.sequence = request.sequence;
-    waiter.arrival_order = pipeline.arrival_order;
-    waiter.generation = request.generation;
-    waiter.address = request.address;
-    waiter.size = request.size;
+      const CacheRequest& request = pipeline.request;
 
-    waiter.response_sent = false;
+      waiter.request_id = request.id;
+      waiter.origin_id = request.origin_id;
+      waiter.sequence = request.sequence;
+      waiter.arrival_order = pipeline.arrival_order;
+      waiter.generation = request.generation;
+      waiter.address = request.address;
+      waiter.size = request.size;
 
-    return waiter;
+      waiter.response_sent = false;
+
+      return waiter;
   }
 
   std::uint64_t AllocateArrival() {
@@ -795,8 +796,13 @@ class CacheController::Impl {
   // Existing helpers: MakeWritebackWaiter.
   void ApplyWritebackForward(int granted_writeback) {
     (void)granted_writeback;
-    throw std::runtime_error(
-        "CacheController::ApplyWritebackForward: TODO(A2-CACHE-10)");
+    WritebackAckWaiter waiter = MakeWritebackWaiter(current_lookup_);
+
+    InsertWriteback(current_lookup_.request.address, current_lookup_.request.data, current_lookup_.arrival_order, waiter, granted_writeback);
+    current_lookup_ = PipelineEntry();
+
+    // throw std::runtime_error(
+    //     "CacheController::ApplyWritebackForward: TODO(A2-CACHE-10)");
   }
 
   // TODO(A2-CACHE-13): increment exactly the one stats counter
