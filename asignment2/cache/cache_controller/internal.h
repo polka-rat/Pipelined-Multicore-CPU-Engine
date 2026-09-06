@@ -890,44 +890,43 @@ return;
 
   
   void ApplyLowerRequestGrant() {
-     RequestChoice choice = SelectLowerRequest();
-    if (choice.owner == RequestOwner::kMshr) {
-    MshrEntry& mshr = next_mshrs_[choice.entry];
-    mshr.state = OwnerState::kInFlight;
+     
+RequestChoice choice = SelectLowerRequest();
 
-    if (choice.oldest_eligible_writeback.has_value()) {
-        WritebackEntry& wb =
-            next_writebacks_[*choice.oldest_eligible_writeback];
-
-        if (wb.demand_bypasses < 8) {
-            ++wb.demand_bypasses;
-        }
-    }
-
-    return;
     if (choice.owner == RequestOwner::kNone) {
-        throw std::runtime_error("lower request grant with no candidate");
+        throw std::runtime_error(
+            "lower request grant with no candidate");
     }
 
     if (choice.owner == RequestOwner::kMshr) {
-        // 1. next_mshrs_[choice.entry].state = kInFlight
+        MshrEntry& mshr = next_mshrs_[choice.entry];
+        mshr.state = OwnerState::kInFlight;
 
-        // 2. If choice.oldest_eligible_writeback has a value:
-        //       get that next_writebacks_ entry
-        //       if demand_bypasses < 8, increment it
+        if (choice.oldest_eligible_writeback.has_value()) {
+            WritebackEntry& wb =
+                next_writebacks_[*choice.oldest_eligible_writeback];
+
+            if (wb.demand_bypasses < 8) {
+                ++wb.demand_bypasses;
+            }
+        }
 
         return;
     }
 
     if (choice.owner == RequestOwner::kWriteback) {
-        // 1. get next_writebacks_[choice.entry]
-        // 2. state = kInFlight
-        // 3. demand_bypasses = 0
-        // 4. ++next_stats_.writebacks_sent
+        WritebackEntry& wb =
+            next_writebacks_[choice.entry];
+
+        wb.state = OwnerState::kInFlight;
+        wb.demand_bypasses = 0;
+        ++next_stats_.writebacks_sent;
 
         return;
     }
-  }
+    }
+
+    
 
   // TODO(A2-CACHE-12): the single mutating call per cycle. Apply only the
   // transfers `grants` authorizes, computed from ONE consistent snapshot of
