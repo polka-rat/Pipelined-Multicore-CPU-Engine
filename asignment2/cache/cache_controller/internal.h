@@ -243,8 +243,31 @@ class CacheController::Impl {
   // configured replacement policy. See SPEC.md's three-step victim
   // priority.
   int SelectVictim(std::uint32_t set) {
-    (void)set;
-    throw std::runtime_error("CacheController::SelectVictim: TODO(A2-CACHE-08)");
+    
+     const std::vector<bool> eligible = EligibleWays(set);
+
+    int victim = -1;
+
+    // Prefer the lowest-index eligible invalid way.
+    for (std::uint32_t way = 0; way < config_.ways; ++way) {
+        if (eligible[way] && !current_lines_[set][way].valid) {
+            victim = static_cast<int>(way);
+            break;
+        }
+    }
+
+    // If every eligible way is valid, ask the replacement policy.
+    if (victim < 0) {
+        victim = replacement_->SelectVictim(set, eligible);
+    }
+
+    // Reserve the chosen way in planned state.
+    if (victim >= 0) {
+        next_lines_[set][static_cast<std::size_t>(victim)].reserved = true;
+    }
+
+    return victim;
+   
   }
 
   // TODO(A2-CACHE-11): compute the transitive UNSENT overlap closure for a
@@ -303,16 +326,46 @@ class CacheController::Impl {
   // reconstruct an upward CacheResponse later. See ABI.md's MshrWaiter
   // invariants.
   MshrWaiter MakeMshrWaiter(const PipelineEntry& pipeline) const {
-    (void)pipeline;
-    throw std::runtime_error("CacheController::MakeMshrWaiter: TODO(A2-CACHE-08)");
+     MshrWaiter waiter;
+
+    const CacheRequest& request = pipeline.request;
+
+    waiter.request_id = request.id;
+    waiter.origin_id = request.origin_id;
+    waiter.sequence = request.sequence;
+    waiter.arrival_order = pipeline.arrival_order;
+    waiter.generation = request.generation;
+
+    waiter.type = request.type;
+    waiter.address = request.address;
+    waiter.size = request.size;
+    waiter.data = request.data;
+
+    waiter.response_ready = false;
+    waiter.response_sent = false;
+    waiter.response_data.clear();
+
+    return waiter;
   }
 
   // TODO(A2-CACHE-10)
   WritebackAckWaiter MakeWritebackWaiter(
       const PipelineEntry& pipeline) const {
-    (void)pipeline;
-    throw std::runtime_error(
-        "CacheController::MakeWritebackWaiter: TODO(A2-CACHE-10)");
+    WritebackAckWaiter waiter;
+
+    const CacheRequest& request = pipeline.request;
+
+    waiter.request_id = request.id;
+    waiter.origin_id = request.origin_id;
+    waiter.sequence = request.sequence;
+    waiter.arrival_order = pipeline.arrival_order;
+    waiter.generation = request.generation;
+    waiter.address = request.address;
+    waiter.size = request.size;
+
+    waiter.response_sent = false;
+
+    return waiter;
   }
 
   std::uint64_t AllocateArrival() {
@@ -326,9 +379,38 @@ class CacheController::Impl {
   // (kReadData with the read bytes, kWriteAck, or kWritebackAck).
   CacheResponse ResponseForHit(const PipelineEntry& pipeline,
                                const CacheLine& line) const {
-    (void)pipeline;
-    (void)line;
-    throw std::runtime_error("CacheController::ResponseForHit: TODO(A2-CACHE-07)");
+   CacheResponse response;
+    const CacheRequest& request = pipeline.request;
+
+    response.id = request.id;
+    response.origin_id = request.origin_id;
+    response.sequence = request.sequence;
+    response.generation = request.generation;
+    response.address = request.address;
+    response.size = request.size;
+
+    if (request.type == RequestType::kRead) {
+        response.type = ResponseType::kReadData;
+
+        const std::size_t start = pipeline.address.offset;
+        const std::size_t end = start + request.size;
+
+        response.data.assign(line.data.begin() + start,
+                             line.data.begin() + end);
+
+    } else if (request.type == RequestType::kWrite) {
+        response.type = ResponseType::kWriteAck;
+        response.data.clear();
+
+    } else if (request.type == RequestType::kWriteback) {
+        response.type = ResponseType::kWritebackAck;
+        response.data.clear();
+
+    } else {
+        throw std::runtime_error("invalid cache request type");
+    }
+
+    return response;
   }
 
   // TODO(A2-CACHE-04): consider OUTPUT, the oldest ready-unsent waiter of
@@ -463,10 +545,25 @@ class CacheController::Impl {
   // TODO(A2-CACHE-06): true iff request's range overlaps any
   // non-ACK_READY (i.e. UNSENT or IN_FLIGHT) writeback entry.
   bool ConflictsWithLowerIncompleteWriteback(const CacheRequest& request) const {
-    (void)request;
-    throw std::runtime_error(
-        "CacheController::ConflictsWithLowerIncompleteWriteback: "
-        "TODO(A2-CACHE-06)");
+    
+      for (const WritebackEntry& writeback : current_writebacks_) {
+        if (!writeback.valid) {
+            continue;
+        }
+
+        if (writeback.state == OwnerState::kAckReady) {
+            continue;
+        }
+
+        if (RangesOverlap(request.address,
+                          request.size,
+                          writeback.address,
+                          writeback.size)) {
+            return true;
+        }
+    }
+
+    return false;
   }
 
   // TODO(A2-CACHE-06/11): select the oldest eligible UNSENT demand MSHR
@@ -478,8 +575,90 @@ class CacheController::Impl {
   // not mutate state or allocate an id.
   // Existing helpers: ConflictsWithLowerIncompleteWriteback, FindFreeWriteback.
   RequestChoice SelectLowerRequest() const {
-    throw std::runtime_error(
-        "CacheController::SelectLowerRequest: TODO(A2-CACHE-06)");
+   
+
+   RequestChoice result;
+
+    auto older_mshr = [&](std::size_t a, std::size_t b) {
+        const auto& x = current_mshrs_[a];
+        const auto& y = current_mshrs_[b];
+
+        return std::tie(x.arrival_order, x.lower_request.id) <
+               std::tie(y.arrival_order, y.lower_request.id);
+    };
+
+    auto older_wb = [&](std::size_t a, std::size_t b) {
+        const auto& x = current_writebacks_[a];
+        const auto& y = current_writebacks_[b];
+
+        return std::tie(x.arrival_order, x.lower_request.id) <
+               std::tie(y.arrival_order, y.lower_request.id);
+    };
+
+    std::optional<std::size_t> demand;
+    std::optional<std::size_t> wb;
+
+    for (std::size_t i = 0; i < current_mshrs_.size(); ++i) {
+        const auto& m = current_mshrs_[i];
+
+        if (!m.valid || m.state != OwnerState::kUnsent)
+            continue;
+
+        if (ConflictsWithLowerIncompleteWriteback(m.lower_request)) {
+            result.demand_blocked_by_writeback = true;
+            continue;
+        }
+
+        if (!demand.has_value() || older_mshr(i, *demand))
+            demand = i;
+    }
+
+    for (std::size_t i = 0; i < current_writebacks_.size(); ++i) {
+        const auto& w = current_writebacks_[i];
+
+        if (!w.valid || w.state != OwnerState::kUnsent)
+            continue;
+
+        if (!wb.has_value() || older_wb(i, *wb))
+            wb = i;
+    }
+
+    result.oldest_eligible_writeback = wb;
+
+    if (!demand.has_value() && !wb.has_value())
+        return result;
+
+    bool use_wb = false;
+
+    if (wb.has_value()) {
+        if (!demand.has_value()) {
+            use_wb = true;
+        } else {
+            const auto& w = current_writebacks_[*wb];
+
+            use_wb =
+                (FindFreeWriteback() < 0) ||
+                (w.demand_bypasses >= 8);
+        }
+    }
+
+    if (use_wb) {
+        const auto& w = current_writebacks_[*wb];
+
+        result.owner = RequestOwner::kWriteback;
+        result.entry = *wb;
+        result.request = w.lower_request;
+        result.arrival_order = w.arrival_order;
+    } else {
+        const auto& m = current_mshrs_[*demand];
+
+        result.owner = RequestOwner::kMshr;
+        result.entry = *demand;
+        result.request = m.lower_request;
+        result.arrival_order = m.arrival_order;
+    }
+
+    return result;
   }
 
   // TODO(A2-CACHE-04): available (already implemented, call from here):
@@ -499,8 +678,13 @@ class CacheController::Impl {
   // SelectLowerRequest() (above) does the candidate selection; this
   // method just extracts its request if any.
   std::optional<CacheRequest> LowerRequestIntent() const {
-    throw std::runtime_error(
-        "CacheController::LowerRequestIntent: TODO(A2-CACHE-06)");
+   const RequestChoice choice = SelectLowerRequest();
+
+    if (choice.owner == RequestOwner::kNone) {
+        return std::nullopt;
+    }
+
+    return choice.request;
   }
 
   // TODO(A2-CACHE-12): mark the candidate ResponseIntent() offered as sent;
