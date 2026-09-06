@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-
+ 
 namespace pipesim::cache {
 namespace cache_controller_internal {
 enum class OwnerState { kUnsent, kInFlight, kResponding, kAckReady };
@@ -832,9 +832,7 @@ return;
         "CacheController::ApplyMshrAllocation: TODO(A2-CACHE-08)");
   }
 
-  // TODO(A2--CACHE-10): forward an upper writeback into InsertWriteback with
-  // its own ack waiter; clear LOOKUP.
-  // Existing helpers: MakeWritebackWaiter.
+  /
   void ApplyWritebackForward(int granted_writeback) {
     (void)granted_writeback;
     WritebackAckWaiter waiter = MakeWritebackWaiter(current_lookup_);
@@ -890,13 +888,23 @@ return;
   // 
   }
 
-  // TODO(A2-CACHE-12): transition the granted MSHR/writeback UNSENT ->
-  // IN_FLIGHT. Granting a demand bumps the oldest eligible writeback's
-  // demand_bypasses (capped at 8); granting a writeback resets
-  // demand_bypasses to 0 and counts writebacks_sent.
+  
   void ApplyLowerRequestGrant() {
      RequestChoice choice = SelectLowerRequest();
+    if (choice.owner == RequestOwner::kMshr) {
+    MshrEntry& mshr = next_mshrs_[choice.entry];
+    mshr.state = OwnerState::kInFlight;
 
+    if (choice.oldest_eligible_writeback.has_value()) {
+        WritebackEntry& wb =
+            next_writebacks_[*choice.oldest_eligible_writeback];
+
+        if (wb.demand_bypasses < 8) {
+            ++wb.demand_bypasses;
+        }
+    }
+
+    return;
     if (choice.owner == RequestOwner::kNone) {
         throw std::runtime_error("lower request grant with no candidate");
     }
