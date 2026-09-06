@@ -114,9 +114,7 @@ class CacheController::Impl {
     operated_ = false;
   }
 
-  // TODO(A2-CACHE-02): local address mapping using this controller's
-  // line_size and sets. Return block base, set, tag, offset. See SPEC.md/
-  // ABI.md for the exact formula.
+  
   AddressFields MapAddress(std::uint32_t address) const {
     
      AddressFields fields;
@@ -249,10 +247,7 @@ class CacheController::Impl {
     return replacement_->PeekVictim(set, eligible);
   }
 
-  // TODO(A2-CACHE-08): choose/reserve a deterministic victim among
-  // currently-eligible, currently-invalid-first ways; fall back to the
-  // configured replacement policy. See SPEC.md's three-step victim
-  // priority.
+ 
   int SelectVictim(std::uint32_t set) {
     
      const std::vector<bool> eligible = EligibleWays(set);
@@ -281,11 +276,7 @@ class CacheController::Impl {
    
   }
 
-  // TODO(A2-CACHE-11): compute the transitive UNSENT overlap closure for a
-  // prospective writeback of [address, address+size); hold
-  // (kWritebackOrder) on any IN_FLIGHT or same-cycle-granted overlap;
-  // enforce the bounded combined waiter count; choose the oldest survivor
-  // by (arrival_order, id).
+  
   WritebackPlan PlanWriteback(std::uint32_t address, std::uint32_t size,
                               std::size_t new_waiters,
                               int granted_writeback = -1) const {
@@ -296,16 +287,12 @@ class CacheController::Impl {
     throw std::runtime_error("CacheController::PlanWriteback: TODO(A2-CACHE-11)");
   }
 
-  // TODO(A2-CACHE-05): true iff a granted upper response this cycle would
-  // drain current OUTPUT (used to plan same-cycle OUTPUT reuse).
+  
   bool OutputWillDrain(bool response_granted) const {
     return current_output_.valid && response_granted;
   }
 
-  // TODO(A2-CACHE-07/08/10): the parallel LOOKUP decision -- hit, MSHR
-  // merge/allocate, writeback-forward, or hold with the specific stall
-  // reason, in the priority SPEC.md/ABI.md define. Must not mutate state.
-  // Existing helpers: FindHit, FindMshrByBlock, FindFreeMshr, PeekVictim, FindFreeWriteback, PlanWriteback.
+  
   LookupDecision DecideLookup(bool output_space,
                               int granted_writeback = -1) const {
     (void)output_space;
@@ -313,14 +300,7 @@ class CacheController::Impl {
     throw std::runtime_error("CacheController::DecideLookup: TODO(A2-CACHE-07)");
   }
 
-  // TODO(A2-CACHE-05): plan three-stage backpressure from current_* state
-  // and the resolved grant flags only. accept_lower_response must be true
-  // iff lower_response is a recognized, correctly-typed, echo-valid owner
-  // (MSHR fill or writeback ack) currently IN_FLIGHT. An owned demand fill
-  // takes the combined LOOKUP port for the cycle. accept_upper_request must
-  // reflect whether INDEX is free or about to be vacated into LOOKUP this
-  // cycle. Must not mutate state.
-  // Existing helpers: FindMshrByLowerId, FindWritebackByLowerId, ValidateEcho, ValidateInbound, OutputWillDrain, DecideLookup.
+  
   CacheStageIntent StageIntent(const CacheRequest* upper_request,
                                const CacheResponse* lower_response,
                                bool response_granted,
@@ -332,10 +312,7 @@ class CacheController::Impl {
     throw std::runtime_error("CacheController::StageIntent: TODO(A2-CACHE-05)");
   }
 
-  // TODO(A2-CACHE-08): construct a waiter (initialize both response flags
-  // false, response_data empty) that records identity/order enough to
-  // reconstruct an upward CacheResponse later. See ABI.md's MshrWaiter
-  // invariants.
+  
   MshrWaiter MakeMshrWaiter(const PipelineEntry& pipeline) const {
      MshrWaiter waiter;
 
@@ -359,7 +336,7 @@ class CacheController::Impl {
     return waiter;
   }
 
-  // TODO(A2--CACHE-10)
+  
   WritebackAckWaiter MakeWritebackWaiter(
       const PipelineEntry& pipeline) const {
 
@@ -387,8 +364,7 @@ class CacheController::Impl {
     return next_arrival_++;
   }
 
-  // TODO(A2-CACHE-07): construct the response for a committed hit
-  // (kReadData with the read bytes, kWriteAck, or kWritebackAck).
+ 
   CacheResponse ResponseForHit(const PipelineEntry& pipeline,
                                const CacheLine& line) const {
    CacheResponse response;
@@ -425,12 +401,9 @@ class CacheController::Impl {
     return response;
   }
 
-  // TODO(A2-CACHE-04): consider OUTPUT, the oldest ready-unsent waiter of
-  // each responding MSHR, and the oldest unsent waiter of each ACK_READY
-  // writeback; select the minimum (arrival_order, response id). Must not
-  // mutate state.
+ 
   ResponseChoice SelectResponse() const {
-   // throw std::runtime_error("CacheController::SelectResponse: TODO(A2-CACHE-04)");
+  
     ResponseChoice best;
 
     auto consider = [&](const ResponseChoice& candidate) {
@@ -554,8 +527,7 @@ class CacheController::Impl {
     return best;
   }
 
-  // TODO(A2-CACHE-06): true iff request's range overlaps any
-  // non-ACK_READY (i.e. UNSENT or IN_FLIGHT) writeback entry.
+  
   bool ConflictsWithLowerIncompleteWriteback(const CacheRequest& request) const {
     
       for (const WritebackEntry& writeback : current_writebacks_) {
@@ -578,14 +550,7 @@ class CacheController::Impl {
     return false;
   }
 
-  // TODO(A2-CACHE-06/11): select the oldest eligible UNSENT demand MSHR
-  // (excluding any that overlap an incomplete writeback) and the oldest
-  // eligible UNSENT writeback, sorted by (arrival_order, lower id). A
-  // demand wins unless the writeback buffer has no free entry or the
-  // oldest eligible writeback has already been bypassed by eight demand
-  // grants, in which case that writeback must be selected instead. Must
-  // not mutate state or allocate an id.
-  // Existing helpers: ConflictsWithLowerIncompleteWriteback, FindFreeWriteback.
+  
   RequestChoice SelectLowerRequest() const {
    
 
@@ -673,9 +638,7 @@ class CacheController::Impl {
     return result;
   }
 
-  // TODO(A2-CACHE-04): available (already implemented, call from here):
-  // SelectResponse() (above) does the candidate selection; this method
-  // just extracts its response if any.
+  
   std::optional<CacheResponse> ResponseIntent() const {
     const ResponseChoice choice = SelectResponse();
 
@@ -686,9 +649,7 @@ class CacheController::Impl {
     return choice.response;
   }
 
-  // TODO(A2-CACHE-06): available (already implemented, call from here):
-  // SelectLowerRequest() (above) does the candidate selection; this
-  // method just extracts its request if any.
+ 
   std::optional<CacheRequest> LowerRequestIntent() const {
    const RequestChoice choice = SelectLowerRequest();
 
@@ -699,10 +660,7 @@ class CacheController::Impl {
     return choice.request;
   }
 
-  // TODO(A2-CACHE-12): mark the candidate ResponseIntent() offered as sent;
-  // free an MSHR (unpinning its way) or writeback entry once every one of
-  // its waiters has been sent.
-  // Existing helpers: SelectResponse, ResponseIntent.
+ 
   void ApplyResponseGrant() {
    ResponseChoice choice = SelectResponse();
 
@@ -806,11 +764,7 @@ return;
         "CacheController::InsertWriteback: TODO(A2-CACHE-11)");
   }
 
-  // TODO(A2-CACHE-07): apply a committed hit -- write store/writeback bytes
-  // at the request's offset, mark dirty, build the response (read the
-  // pre-write line for a load, the post-write line otherwise), call
-  // replacement_->OnHit, and update hits/writeback_hits exactly once.
-  // Existing helpers: ResponseForHit.
+  
   void ApplyHit(const LookupDecision& decision) {
     const std::uint32_t set = current_lookup_.address.set;
     const std::size_t way =
@@ -849,8 +803,7 @@ return;
     next_lookup_ = PipelineEntry();
   }
 
-  // TODO(A2-CACHE-08): append a waiter to the existing MSHR; update
-  // mshr_merges exactly once; clear LOOKUP.
+  
   void ApplyMshrMerge(int mshr_index) {
       MshrEntry& mshr =
         next_mshrs_[static_cast<std::size_t>(mshr_index)];
