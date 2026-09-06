@@ -734,13 +734,8 @@ if (all_sent) {
 }
 
 return;
-        bool all_sent = std::all_of(
-    entry.waiters.begin(),
-    entry.waiters.end(),
-    [](const auto& waiter) {
-        return waiter.response_sent;
-    });
-        return;
+   
+    
     }
 
     if (choice.owner == ResponseOwner::kWriteback) {
