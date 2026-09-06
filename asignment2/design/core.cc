@@ -105,7 +105,68 @@ namespace pipesim::design_internal {
         StageSnapshot& snapshot=snapshots_[static_cast<std::size_t>(StageRole::kDecode)]; 
         snapshot=StageSnapshot(); 
         snapshot.action="EMPTY"; 
-        
+
+        if (!if_id_.valid) {
+            for (int i = 0; i < 7; i++) {
+                pipelines_[i]->Operate(current_boundary_, std::nullopt, consume_output_[i]);
+            }
+            pipelines_operated_ = true;
+            return;
+        }
+
+        FetchedInstruction& fetchedInstruction = if_id_.fetched;
+        Instruction& instruction = fetchedInstruction.instruction;
+
+        snapshot.valid = true;
+        snapshot.pc = instruction.pc;
+        snapshot.opcode = OpcodeName(instruction.opcode);
+
+        if (IsControl(instruction.opcode) && !if_id_.control_recognized) {
+            next_fetch_stopped_ = true;
+            next_if_id_.control_recognized = true;
+            control_recognized_this_cycle_ = true;
+        }
+
+        DecodeResult decodeResult;
+
+        if (!if_id_.decoded) {
+            decodeResult = main_control_->Decode(instruction);
+        } else {
+            decodeResult = if_id_.decode;
+        }
+
+        ExecutionUnitKind unit = decodeResult.unit;
+        int unitIndex = static_cast<int> (unit);
+
+        // Checks in order given in the pdf
+        // Completion capacity
+        if (!machine_->CompletionQueueHasCapacity()) {
+            machine_->RecordCpuStall(CpuStallReason::kCompletionQueueFull);
+            for (int i = 0; i < 7; i++) {
+                pipelines_[i]->Operate(current_boundary_, std::nullopt, consume_output_[i]);
+            }
+
+        }
+        // RAW and WAW
+        if (hazard_control_->Check(machine_, fetchedInstruction.sequence, instruction, decodeResult.writes_register)
+            == HazardResult::kRaw) {
+
+        } 
+        // Unit availability
+        if (!pipelines_[unitIndex]->CanAccept(current_boundary_+1, consume_output_[unitIndex])) {
+
+        }
+        // Completion reservation
+        if (unit != ExecutionUnitKind::kAgu) {
+
+        }
+
+        ExecutionOperation executionOperation;
+        executionOperation.sequence = fetchedInstruction.sequence;
+        executionOperation.instruction = instruction;
+        executionOperation.dispatch_boundary = current_boundary_+1;
+        executionOperation.lhs = machine_->ReadRegister(instruction.rs1);
+
         throw std::runtime_error("Core::Decode: TODO(A2-DESIGN-03)"); 
     }
 
