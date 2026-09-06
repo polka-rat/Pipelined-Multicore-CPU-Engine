@@ -27,7 +27,18 @@ struct ResponseChoice { ResponseOwner owner=ResponseOwner::kNone; std::size_t en
 enum class RequestOwner { kNone,kMshr,kWriteback };
 struct RequestChoice { RequestOwner owner=RequestOwner::kNone; std::size_t entry=0; CacheRequest request; std::uint64_t arrival_order=0; bool demand_blocked_by_writeback=false; std::optional<std::size_t> oldest_eligible_writeback; };
 enum class LookupKind { kEmpty,kHit,kMshrMerge,kMshrAllocate,kWritebackForward,kHold };
-enum class LookupStall { kNone,kOutput,kMshrWaiterFull,kMshrFull,kReservedWay,kWritebackOrder,kWritebackWaiterFull,kWritebackFull };
+
+enum class LookupStall { 
+  kNone,
+  kOutput,
+  kMshrWaiterFull,
+  kMshrFull,
+  kReservedWay,
+  kWritebackOrder,
+  kWritebackWaiterFull,
+  kWritebackFull 
+};
+
 struct LookupDecision { LookupKind kind=LookupKind::kEmpty; LookupStall stall=LookupStall::kNone; int hit_way=-1,mshr=-1,victim_way=-1; };
 struct WritebackPlan { bool allowed=false; std::vector<std::size_t> merge_entries; int survivor=-1; LookupStall stall=LookupStall::kNone; };
 inline bool RangesOverlap(std::uint32_t a,std::uint32_t as,std::uint32_t b,std::uint32_t bs){const auto ae=static_cast<std::uint64_t>(a)+as,be=static_cast<std::uint64_t>(b)+bs;return a<be&&b<ae;}
@@ -794,8 +805,42 @@ class CacheController::Impl {
   // could apply.
   void CountLookupStall(LookupStall stall) {
     (void)stall;
-    throw std::runtime_error(
-        "CacheController::CountLookupStall: TODO(A2-CACHE-13)");
+    switch (stall)
+    {
+      case LookupStall::kNone:
+        break;
+
+      case LookupStall::kOutput:
+        next_stats_.output_queue_stalls++;
+        break;
+
+      case LookupStall::kMshrWaiterFull:
+        next_stats_.mshr_waiter_full_stalls++;
+        break;
+
+      case LookupStall::kMshrFull:
+        next_stats_.mshr_full_stalls++;
+        break;
+
+      case LookupStall::kReservedWay:
+        next_stats_.reserved_way_stalls++;
+        break;
+
+      case LookupStall::kWritebackOrder:
+        next_stats_.writeback_order_stalls++;
+        break;
+
+      case LookupStall::kWritebackWaiterFull:
+        next_stats_.writeback_waiter_full_stalls++;
+        break;
+
+      case LookupStall::kWritebackFull:
+        next_stats_.writeback_full_stalls++;
+        break;
+    }
+  //   throw std::runtime_error(
+  //       "CacheController::CountLookupStall: TODO(A2-CACHE-13)");
+  // 
   }
 
   // TODO(A2-CACHE-12): transition the granted MSHR/writeback UNSENT ->
