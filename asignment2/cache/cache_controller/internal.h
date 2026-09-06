@@ -351,9 +351,21 @@ class CacheController::Impl {
   // TODO(A2-CACHE-10)
   WritebackAckWaiter MakeWritebackWaiter(
       const PipelineEntry& pipeline) const {
-    (void)pipeline;
-    throw std::runtime_error(
-        "CacheController::MakeWritebackWaiter: TODO(A2-CACHE-10)");
+    WritebackAckWaiter waiter;
+
+    const CacheRequest& request = pipeline.request;
+
+    waiter.request_id = request.id;
+    waiter.origin_id = request.origin_id;
+    waiter.sequence = request.sequence;
+    waiter.arrival_order = pipeline.arrival_order;
+    waiter.generation = request.generation;
+    waiter.address = request.address;
+    waiter.size = request.size;
+
+    waiter.response_sent = false;
+
+    return waiter;
   }
 
   std::uint64_t AllocateArrival() {
