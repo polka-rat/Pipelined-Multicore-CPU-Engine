@@ -763,16 +763,55 @@ class CacheController::Impl {
   // replacement_->OnHit, and update hits/writeback_hits exactly once.
   // Existing helpers: ResponseForHit.
   void ApplyHit(const LookupDecision& decision) {
-    (void)decision;
-    throw std::runtime_error("CacheController::ApplyHit: TODO(A2-CACHE-07)");
+    const std::uint32_t set = current_lookup_.address.set;
+    const std::size_t way =
+        static_cast<std::size_t>(decision.hit_way);
+
+    CacheLine& line = next_lines_[set][way];
+    const CacheRequest& request = current_lookup_.request;
+
+    if (request.type == RequestType::kWrite ||
+    request.type == RequestType::kWriteback) {
+
+    for (std::size_t i = 0; i < request.data.size(); ++i) {
+        line.data[current_lookup_.address.offset + i] =
+            request.data[i];
+    }
+
+    line.dirty = true;
+}
+
+    CacheResponse response =
+        ResponseForHit(current_lookup_, line);
+
+    next_output_.valid = true;
+    next_output_.response = response;
+    next_output_.arrival_order =
+        current_lookup_.arrival_order;
+
+    replacement_->OnHit(set, way);
+
+   if (request.type == RequestType::kWriteback) {
+    ++next_stats_.writeback_hits;
+} else {
+    ++next_stats_.hits;
+}
+
+    next_lookup_ = PipelineEntry();
   }
 
   // TODO(A2-CACHE-08): append a waiter to the existing MSHR; update
   // mshr_merges exactly once; clear LOOKUP.
   void ApplyMshrMerge(int mshr_index) {
-    (void)mshr_index;
-    throw std::runtime_error(
-        "CacheController::ApplyMshrMerge: TODO(A2-CACHE-08)");
+      MshrEntry& mshr =
+        next_mshrs_[static_cast<std::size_t>(mshr_index)];
+
+    MshrWaiter waiter = MakeMshrWaiter(current_lookup_);
+    mshr.waiters.push_back(std::move(waiter));
+
+    ++next_stats_.mshr_merges;
+
+    next_lookup_ = PipelineEntry();
   }
 
   // TODO(A2-CACHE-08): allocate the new primary MSHR at the planned victim
