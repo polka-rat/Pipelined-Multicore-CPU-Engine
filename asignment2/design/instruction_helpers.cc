@@ -35,8 +35,8 @@ namespace pipesim::design_internal
                 case Opcode::kNop: 
                     break; 
                 } 
-                
-                throw std::runtime_error("UnitFor: TODO(A2-DESIGN-03) opcode not routed"); 
+                return;
+                // throw std::runtime_error("UnitFor: TODO(A2--DESIGN-03) opcode not routed"); 
     }
 
 

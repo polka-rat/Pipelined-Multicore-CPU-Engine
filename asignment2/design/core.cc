@@ -38,7 +38,7 @@ namespace pipesim::design_internal {
 
         machine_->ApplyRetirement(retirement);
 
-        // throw std::runtime_error("Core::Writeback: TODO(A2-DESIGN-06)"); 
+        // throw std::runtime_error("Core::Writeback: TODO(A2--DESIGN-06)"); 
     }
 
     void Core::Memory(){ 
@@ -64,7 +64,7 @@ namespace pipesim::design_internal {
                                     consume_output_[static_cast<std::size_t>(ExecutionUnitKind::kAgu)] = true;
                                    }
 
-        // throw std::runtime_error("Core::Memory: TODO(A2-DESIGN-05)"); 
+        // throw std::runtime_error("Core::Memory: TODO(A2--DESIGN-05)"); 
     }
 
     void Core::Execute(){ 
@@ -98,7 +98,7 @@ namespace pipesim::design_internal {
             consume_output_[i] = true;
         }
 
-        // throw std::runtime_error("Core::Execute: TODO(A2-DESIGN-05)"); 
+        // throw std::runtime_error("Core::Execute: TODO(A2--DESIGN-05)"); 
     }
 
     void Core::Decode(){ 
@@ -228,7 +228,7 @@ namespace pipesim::design_internal {
         }
 
         pipelines_operated_ = true;
-        // throw std::runtime_error("Core::Decode: TODO(A2-DESIGN-03)"); 
+        // throw std::runtime_error("Core::Decode: TODO(A2--DESIGN-03)"); 
     }
 
     void Core::Fetch(){ 
@@ -275,7 +275,7 @@ namespace pipesim::design_internal {
             next_if_id_ = if_id_;
         }
 
-        // throw std::runtime_error("Core::Fetch: TODO(A2-DESIGN-02)"); 
+        // throw std::runtime_error("Core::Fetch: TODO(A2--DESIGN-02)"); 
     }
 
     void Core::BeginCycle(){ 

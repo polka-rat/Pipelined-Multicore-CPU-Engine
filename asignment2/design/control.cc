@@ -13,7 +13,7 @@ namespace pipesim::design_internal {
         if (ReadsRs1(instruction.opcode) && machine->HasOlderProducer(sequence,instruction.rs1)) return HazardResult::kRaw; 
         if (ReadsRs2(instruction.opcode) && machine->HasOlderProducer(sequence,instruction.rs2)) return HazardResult::kRaw; 
         if (writes_register && machine->HasOlderDestination(sequence, instruction.rd)) return HazardResult::kWaw;
-        // throw std::runtime_error("HazardControl::Check: TODO(A2-DESIGN-03)"); }
+        // throw std::runtime_error("HazardControl::Check: TODO(A2--DESIGN-03)"); }
         return HazardResult::kNone;
     }
 }

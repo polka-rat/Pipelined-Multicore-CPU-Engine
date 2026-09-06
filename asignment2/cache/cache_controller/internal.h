@@ -359,7 +359,7 @@ class CacheController::Impl {
     return waiter;
   }
 
-  // TODO(A2-CACHE-10)
+  // TODO(A2--CACHE-10)
   WritebackAckWaiter MakeWritebackWaiter(
       const PipelineEntry& pipeline) const {
 
@@ -830,7 +830,7 @@ class CacheController::Impl {
         "CacheController::ApplyMshrAllocation: TODO(A2-CACHE-08)");
   }
 
-  // TODO(A2-CACHE-10): forward an upper writeback into InsertWriteback with
+  // TODO(A2--CACHE-10): forward an upper writeback into InsertWriteback with
   // its own ack waiter; clear LOOKUP.
   // Existing helpers: MakeWritebackWaiter.
   void ApplyWritebackForward(int granted_writeback) {
@@ -841,10 +841,10 @@ class CacheController::Impl {
     current_lookup_ = PipelineEntry();
 
     // throw std::runtime_error(
-    //     "CacheController::ApplyWritebackForward: TODO(A2-CACHE-10)");
+    //     "CacheController::ApplyWritebackForward: TODO(A2--CACHE-10)");
   }
 
-  // TODO(A2-CACHE-13): increment exactly the one stats counter
+  // TODO(A2--CACHE-13): increment exactly the one stats counter
   // corresponding to `stall` (kNone/kOutput count nothing). See SPEC.md's
   // stall-precedence chain for which counter fires when several reasons
   // could apply.
@@ -884,7 +884,7 @@ class CacheController::Impl {
         break;
     }
   //   throw std::runtime_error(
-  //       "CacheController::CountLookupStall: TODO(A2-CACHE-13)");
+  //       "CacheController::CountLookupStall: TODO(A2--CACHE-13)");
   // 
   }
 

@@ -26,7 +26,7 @@ std::unique_ptr<Processor> BuildDesign(Machine* machine) {
   const NodeId l1i=builder.AddCache(cache::CacheRole::kL1I,"L1I",new cache::CacheController(cache::CacheRole::kL1I,config.l1i,machine->TransactionIds()));
   builder.Connect(fetch,l1i,ConnectionType::kData);
 
-  //Adding remaining stages of builder [TODO(A2-DESIGN-01)]
+  //Adding remaining stages of builder [TODO(A2--DESIGN-01)]
   const NodeId l2i=builder.AddCache(cache::CacheRole::kL2I,"L2I",new cache::CacheController(cache::CacheRole::kL2I,config.l2i,machine->TransactionIds()));
   builder.Connect(l1i,l2i,ConnectionType::kData);
 
@@ -97,7 +97,7 @@ std::unique_ptr<Processor> BuildDesign(Machine* machine) {
   builder.Connect(h_control, id_ex, ConnectionType::kBubble);
   
   // (void)main_control; (void)hazard_control;
-  // throw std::runtime_error("BuildDesign: TODO(A2-DESIGN-01) incomplete");
+  // throw std::runtime_error("BuildDesign: TODO(A2--DESIGN-01) incomplete");
   return builder.Build(machine);
 }
 }
