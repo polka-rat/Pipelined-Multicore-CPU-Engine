@@ -12,7 +12,7 @@ namespace pipesim {
         current.assign(stage_count, std::nullopt);
         next.assign(stage_count, std::nullopt);
 
-        // throw std::runtime_error("ExecutionPipeline::Impl: TODO(A2-EXEC-01)");
+        // throw std::runtime_error("ExecutionPipeline::Impl: TODO(A2--EXEC-01)");
     }
 
     ExecutionResult ExecutionPipeline::Impl::ResultFor(const ExecutionOperation& operation) const{
@@ -73,6 +73,6 @@ namespace pipesim {
             default:
                 throw std::runtime_error("ExecutionPipeline::ResultFor: unknown execution-unit kind");
         }
-        // throw std::runtime_error("ExecutionPipeline::ResultFor: TODO(A2-EXEC-02)");
+        // throw std::runtime_error("ExecutionPipeline::ResultFor: TODO(A2--EXEC-02)");
     }
 }

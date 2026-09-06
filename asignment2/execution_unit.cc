@@ -14,7 +14,7 @@ void ExecutionPipeline::Reset(){
     impl_->next_legal_next=0;
     impl_->current.assign(impl_->current.size(), std::nullopt);
     impl_->next.assign(impl_->next.size(), std::nullopt);
-    // throw std::runtime_error("ExecutionPipeline::Reset: TODO(A2-EXEC-01)");
+    // throw std::runtime_error("ExecutionPipeline::Reset: TODO(A2--EXEC-01)");
 }
 
 void ExecutionPipeline::BeginCycle(){
@@ -25,7 +25,7 @@ void ExecutionPipeline::BeginCycle(){
     impl_->next = impl_->current;
     impl_->next_legal_next=impl_->next_legal_current;
     impl_->operated=false;
-    // throw std::runtime_error("ExecutionPipeline::BeginCycle: TODO(A2-EXEC-01)");
+    // throw std::runtime_error("ExecutionPipeline::BeginCycle: TODO(A2--EXEC-01)");
 }
 
 ExecutionUnitKind ExecutionPipeline::kind()const{return impl_->kind;}
@@ -38,7 +38,7 @@ std::optional<ExecutionResult> ExecutionPipeline::OutputIntent()const{
         return result;
     }
     return std::nullopt;
-    // throw std::runtime_error("ExecutionPipeline::OutputIntent: TODO(A2-EXEC-02)");
+    // throw std::runtime_error("ExecutionPipeline::OutputIntent: TODO(A2--EXEC-02)");
 }
 
 //Added
@@ -63,7 +63,7 @@ bool ExecutionPipeline::CanAccept(std::uint64_t dispatch_boundary,bool output_wi
 
     return !temp_current.front().has_value();
 
-    // throw std::runtime_error("ExecutionPipeline::CanAccept: TODO(A2-EXEC-03)");
+    // throw std::runtime_error("ExecutionPipeline::CanAccept: TODO(A2--EXEC-03)");
     
 }
 
@@ -104,7 +104,7 @@ void ExecutionPipeline::Operate(std::uint64_t current_boundary,const std::option
 
     impl_->operated=true;
 
-    // throw std::runtime_error("ExecutionPipeline::Operate: TODO(A2-EXEC-04)");
+    // throw std::runtime_error("ExecutionPipeline::Operate: TODO(A2--EXEC-04)");
 }
 
 //Added 
@@ -115,7 +115,7 @@ void ExecutionPipeline::Commit(){
     impl_->current=impl_->next;
     impl_->next_legal_current=impl_->next_legal_next;
 
-    // throw std::runtime_error("ExecutionPipeline::Commit: TODO(A2-EXEC-05)");
+    // throw std::runtime_error("ExecutionPipeline::Commit: TODO(A2--EXEC-05)");
 }
 
 //Added
@@ -145,7 +145,7 @@ ExecutionSnapshot ExecutionPipeline::Snapshot()const{
     }
 
     return snapshot;
-    // throw std::runtime_error("ExecutionPipeline::Snapshot: TODO(A2-EXEC-05)");
+    // throw std::runtime_error("ExecutionPipeline::Snapshot: TODO(A2--EXEC-05)");
 }
 
 //Added
@@ -154,6 +154,6 @@ bool ExecutionPipeline::HasWork()const{
         if(stage.has_value()) return true;
     }
     return false;
-    // throw std::runtime_error("ExecutionPipeline::HasWork: TODO(A2-EXEC-05)");
+    // throw std::runtime_error("ExecutionPipeline::HasWork: TODO(A2--EXEC-05)");
 }
 }

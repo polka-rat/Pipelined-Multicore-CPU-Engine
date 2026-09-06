@@ -19,7 +19,7 @@ namespace {
   }
 }
 
-// TODO(A2-REPL-01): Tree-PLRU. Implement Reset/BeginCycle/OnHit/OnInsert/
+// TODO(A2--REPL-01): Tree-PLRU. Implement Reset/BeginCycle/OnHit/OnInsert/
 // PeekVictim/SelectVictim/DebugState per SPEC.md/ABI.md.
 //
 // Worked example (current/next commit discipline only -- the same shape
@@ -42,7 +42,7 @@ class TreePlru final : public ReplacementPolicy {
     planned_.assign(sets_, std::vector<bool>(ways_-1, false));
     begun_ = false;
     event_planned_ = false;
-    // throw std::runtime_error("TreePlru::Reset: TODO(A2-REPL-01)");
+    // throw std::runtime_error("TreePlru::Reset: TODO(A2--REPL-01)");
   }
 
   void BeginCycle() override {
@@ -51,7 +51,7 @@ class TreePlru final : public ReplacementPolicy {
     begun_ = true;
     event_planned_ = false;
     planned_= current_;
-    // throw std::runtime_error("TreePlru::BeginCycle: TODO(A2-REPL-01)");
+    // throw std::runtime_error("TreePlru::BeginCycle: TODO(A2--REPL-01)");
   }
 
   void OnHit(std::uint32_t set, std::uint32_t way) override {
@@ -79,7 +79,7 @@ class TreePlru final : public ReplacementPolicy {
         }
     }
     event_planned_=true;
-    // throw std::runtime_error("TreePlru::OnHit: TODO(A2-REPL-01)");
+    // throw std::runtime_error("TreePlru::OnHit: TODO(A2--REPL-01)");
   }
 
   void OnInsert(std::uint32_t set, std::uint32_t way) override {
@@ -107,7 +107,7 @@ class TreePlru final : public ReplacementPolicy {
         }
     }
     event_planned_=true;
-    // throw std::runtime_error("TreePlru::OnInsert: TODO(A2-REPL-01)");
+    // throw std::runtime_error("TreePlru::OnInsert: TODO(A2--REPL-01)");
   }
 
   int SelectVictim(std::uint32_t set,
@@ -155,7 +155,7 @@ class TreePlru final : public ReplacementPolicy {
     OnInsert(set,left_lim);
     // event_planned_=true;
     return left_lim;
-    // throw std::runtime_error("TreePlru::SelectVictim: TODO(A2-REPL-01)");
+    // throw std::runtime_error("TreePlru::SelectVictim: TODO(A2--REPL-01)");
   }
 
   int PeekVictim(std::uint32_t set,
@@ -199,14 +199,14 @@ class TreePlru final : public ReplacementPolicy {
     }
 
     return left_lim;
-    // throw std::runtime_error("TreePlru::PeekVictim: TODO(A2-REPL-01)");
+    // throw std::runtime_error("TreePlru::PeekVictim: TODO(A2--REPL-01)");
   }
 
   std::vector<std::uint32_t> DebugState(std::uint32_t set) const override {
     // (void)set;
     CheckCoordinates(set, 0, sets_ , ways_);
     return std::vector<std::uint32_t>(current_[set].begin(), current_[set].end());
-    // throw std::runtime_error("TreePlru::DebugState: TODO(A2-REPL-01)");
+    // throw std::runtime_error("TreePlru::DebugState: TODO(A2--REPL-01)");
   }
 
   // Worked example: the general current/next commit discipline (compare
@@ -228,7 +228,7 @@ class TreePlru final : public ReplacementPolicy {
   bool event_planned_ = false;
 };
 
-// TODO(A2-REPL-02): SRRIP. Implement Reset/BeginCycle/OnHit/OnInsert/
+// TODO(A2--REPL-02): SRRIP. Implement Reset/BeginCycle/OnHit/OnInsert/
 // PeekVictim/SelectVictim/DebugState per SPEC.md/ABI.md (2-bit RRPV,
 // init 3, hit 0, insertion 2, saturating aging, lowest-way tie-break).
 class Srrip final : public ReplacementPolicy {
@@ -244,7 +244,7 @@ class Srrip final : public ReplacementPolicy {
 
     begun_ = false;
     event_planned_ = false;
-    // throw std::runtime_error("Srrip::Reset: TODO(A2-REPL-02)");
+    // throw std::runtime_error("Srrip::Reset: TODO(A2--REPL-02)");
   }
 
   void BeginCycle() override {
@@ -255,7 +255,7 @@ class Srrip final : public ReplacementPolicy {
     event_planned_ = false;
     planned_= current_;
     
-    // throw std::runtime_error("Srrip::BeginCycle: TODO(A2-REPL-02)");
+    // throw std::runtime_error("Srrip::BeginCycle: TODO(A2--REPL-02)");
   }
 
   void OnHit(std::uint32_t set, std::uint32_t way) override {
@@ -268,7 +268,7 @@ class Srrip final : public ReplacementPolicy {
 
     event_planned_ = true;
 
-    // throw std::runtime_error("Srrip::OnHit: TODO(A2-REPL-02)");
+    // throw std::runtime_error("Srrip::OnHit: TODO(A2--REPL-02)");
   }
 
   void OnInsert(std::uint32_t set, std::uint32_t way) override {
@@ -282,7 +282,7 @@ class Srrip final : public ReplacementPolicy {
 
     event_planned_ = true;
 
-    // throw std::runtime_error("Srrip::OnHit: TODO(A2-REPL-02)");
+    // throw std::runtime_error("Srrip::OnHit: TODO(A2--REPL-02)");
   }
 
   int SelectVictim(std::uint32_t set,
@@ -313,7 +313,7 @@ class Srrip final : public ReplacementPolicy {
     event_planned_ = true;
     return max_index;
 
-    // throw std::runtime_error("Srrip::OnHit: TODO(A2-REPL-02)");
+    // throw std::runtime_error("Srrip::OnHit: TODO(A2--REPL-02)");
   }
 
   int PeekVictim(std::uint32_t set,
@@ -335,7 +335,7 @@ class Srrip final : public ReplacementPolicy {
     if(max_val==-1) throw std::runtime_error("SRRIP SelectVictim: no eligible ways");
     return max_index;
 
-    // throw std::runtime_error("Srrip::OnHit: TODO(A2-REPL-02)");
+    // throw std::runtime_error("Srrip::OnHit: TODO(A2--REPL-02)");
   }
 
   std::vector<std::uint32_t> DebugState(std::uint32_t set) const override {
@@ -343,7 +343,7 @@ class Srrip final : public ReplacementPolicy {
     CheckCoordinates(set, 0, sets_ , ways_);
     return std::vector<std::uint32_t>(current_[set].begin(), current_[set].end());
     
-    // throw std::runtime_error("Srrip::DebugState: TODO(A2-REPL-02)");
+    // throw std::runtime_error("Srrip::DebugState: TODO(A2--REPL-02)");
   }
 
   void Commit() override {
@@ -364,7 +364,7 @@ class Srrip final : public ReplacementPolicy {
 
 }  // namespace
 
-// TODO(A2-REPL-03): return the requested concrete policy for the supplied
+// TODO(A2--REPL-03): return the requested concrete policy for the supplied
 // sets/ways, or fail on an impossible enumerator. Worked example below.
 std::unique_ptr<ReplacementPolicy> MakeReplacementPolicy(
     ReplacementKind kind, std::uint32_t sets, std::uint32_t ways) {
