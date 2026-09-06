@@ -145,29 +145,90 @@ namespace pipesim::design_internal {
             for (int i = 0; i < 7; i++) {
                 pipelines_[i]->Operate(current_boundary_, std::nullopt, consume_output_[i]);
             }
+            pipelines_operated_ = true;
+            return;
 
         }
         // RAW and WAW
-        if (hazard_control_->Check(machine_, fetchedInstruction.sequence, instruction, decodeResult.writes_register)
-            == HazardResult::kRaw) {
-
+        HazardResult hazardResult = hazard_control_->Check(machine_, fetchedInstruction.sequence, instruction, decodeResult.writes_register);
+        if (hazardResult == HazardResult::kRaw) {
+            machine_->RecordCpuStall(CpuStallReason::kOutstandingRaw);
+            for (int i = 0; i < 7; i++) {
+                pipelines_[i]->Operate(current_boundary_, std::nullopt, consume_output_[i]);
+            }
+            pipelines_operated_ = true;
+            return;
+        } 
+        if (hazardResult == HazardResult::kWaw) {
+            machine_->RecordCpuStall(CpuStallReason::kOutstandingWaw);
+            for (int i = 0; i < 7; i++) {
+                pipelines_[i]->Operate(current_boundary_, std::nullopt, consume_output_[i]);
+            }
+            pipelines_operated_ = true;
+            return;
         } 
         // Unit availability
         if (!pipelines_[unitIndex]->CanAccept(current_boundary_+1, consume_output_[unitIndex])) {
-
+            machine_->RecordCpuStall(CpuStallReason::kExecutionUnitBusy);
+            for (int i = 0; i < 7; i++) {
+                pipelines_[i]->Operate(current_boundary_, std::nullopt, consume_output_[i]);
+            }
+            pipelines_operated_ = true;
+            return;
         }
         // Completion reservation
+        std::optional<int> resultBoundary;
         if (unit != ExecutionUnitKind::kAgu) {
-
+            resultBoundary = ResultBoundary(current_boundary_+1, pipelines_[unitIndex]->config().latency);
+            if (machine_->NormalCompletionSlotAvailable(*resultBoundary)) {
+                machine_->RecordCpuStall(CpuStallReason::kExecutionCompletionSlot);
+                for (int i = 0; i < 7; i++) {
+                    pipelines_[i]->Operate(current_boundary_, std::nullopt, consume_output_[i]);
+                }
+                pipelines_operated_ = true;
+                return;
+            }
         }
 
         ExecutionOperation executionOperation;
         executionOperation.sequence = fetchedInstruction.sequence;
         executionOperation.instruction = instruction;
         executionOperation.dispatch_boundary = current_boundary_+1;
-        executionOperation.lhs = machine_->ReadRegister(instruction.rs1);
 
-        throw std::runtime_error("Core::Decode: TODO(A2-DESIGN-03)"); 
+        executionOperation.lhs = machine_->ReadRegister(instruction.rs1);
+        if (ReadsRs2(instruction.opcode)) {
+            executionOperation.rhs = machine_->ReadRegister(instruction.rs2);
+        } else {
+            executionOperation.rhs = static_cast<std::uint32_t>(instruction.immediate);
+        }
+
+        if (instruction.opcode == Opcode::kSw) {
+            executionOperation.store_value =
+            machine_->ReadRegister(instruction.rs2);
+        }
+        
+        if (!machine_->TryAllocateCompletion(fetchedInstruction.sequence, instruction, decodeResult.writes_register, resultBoundary)) {
+            machine_->RecordCpuStall(CpuStallReason::kExecutionCompletionSlot);
+            for (int i = 0; i < 7; i++) {
+                pipelines_[i]->Operate(current_boundary_, std::nullopt, consume_output_[i]);
+            }
+            pipelines_operated_ = true;
+            return;
+        }
+
+        next_if_id_ = FrontendLatch();
+        if_id_consumed_ = true;
+
+        for (int i = 0; i < 7; i++) {
+            if (i == unitIndex) {
+                pipelines_[i]->Operate(current_boundary_, executionOperation, consume_output_[i]);
+            } else {
+                pipelines_[i]->Operate(current_boundary_, std::nullopt, consume_output_[i]);
+            }
+        }
+
+        pipelines_operated_ = true;
+        // throw std::runtime_error("Core::Decode: TODO(A2-DESIGN-03)"); 
     }
 
     void Core::Fetch(){ 
