@@ -15,11 +15,12 @@ SpeculationController::~SpeculationController() = default;
 
 void SpeculationController::Reset() {
   impl_->checkpoints.clear();
-  throw std::runtime_error("SpeculationController::Reset: TODO(PA3-FRAMEWORK-01)");
+  // throw std::runtime_error("SpeculationController::Reset: TODO(PA3-FRAMEWORK-01)");
 }
 
 bool SpeculationController::CanFetch() const {
-  throw std::runtime_error("SpeculationController::CanFetch: TODO(PA3-FRAMEWORK-01)");
+  return (impl_->checkpoints.size() < impl_->maximum_checkpoints);
+  // throw std::runtime_error("SpeculationController::CanFetch: TODO(PA3-FRAMEWORK-01)");
 }
 
 bool SpeculationController::CanDispatch(
