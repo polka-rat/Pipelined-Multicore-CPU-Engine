@@ -28,7 +28,23 @@ bool SpeculationController::CanDispatch(
     const Instruction& instruction) const {
   (void)sequence;
   (void)instruction;
-  throw std::runtime_error("SpeculationController::CanDispatch: TODO(PA3-FRAMEWORK-02)");
+  if (!IsSpeculative(sequence)) return true;
+  
+  switch (instruction.opcode)
+  {
+    case Opcode::kAdd:
+    case Opcode::kSub:
+    case Opcode::kAnd:
+    case Opcode::kOr:
+    case Opcode::kXor:
+    case Opcode::kAddi:
+      return true;
+    
+    default:
+      return false;
+  }
+  
+  // throw std::runtime_error("SpeculationController::CanDispatch: TODO(PA3-FRAMEWORK-02)");
 }
 
 void SpeculationController::AddCheckpoint(
