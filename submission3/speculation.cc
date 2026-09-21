@@ -55,7 +55,13 @@ void SpeculationController::AddCheckpoint(
 
 bool SpeculationController::IsSpeculative(std::uint64_t sequence) const {
   (void)sequence;
-  throw std::runtime_error("SpeculationController::IsSpeculative: TODO(PA3-FRAMEWORK-03)");
+  for (const auto& checkpoint : impl_->checkpoints) {
+    if (checkpoint.sequence < sequence) {
+      return true;
+    }
+  }
+  return false;
+  // throw std::runtime_error("SpeculationController::IsSpeculative: TODO(PA3-FRAMEWORK-03)");
 }
 
 std::uint64_t SpeculationController::SpeculationDepth(
