@@ -1,11 +1,26 @@
 #include "design/core.h"
 #include "design/instruction_helpers.h"
+#include "branch_prediction/internal.h"
+#include "speculation.h"
 #include <limits>
 #include <stdexcept>
 namespace pipesim::design_internal {
-Core::Core(Machine* machine,const std::array<ExecutionPipeline*,7>& pipelines,MainControl* main_control,HazardControl* hazard_control,BranchPredictionSystem* branch_prediction,SpeculationController* speculation_control):machine_(machine),pipelines_(pipelines),main_control_(main_control),hazard_control_(hazard_control),branch_prediction_(branch_prediction),speculation_control_(speculation_control){
- if(machine_==nullptr||main_control_==nullptr||hazard_control_==nullptr||branch_prediction_==nullptr||speculation_control_==nullptr) throw std::runtime_error("CPU core received a null component");
- for(std::size_t i=0;i<pipelines_.size();++i) if(pipelines_[i]==nullptr||pipelines_[i]->kind()!=static_cast<ExecutionUnitKind>(i)) throw std::runtime_error("CPU core execution-unit registration mismatch");
+Core::Core(Machine* machine, 
+           const std::array<ExecutionPipeline*,7>& pipelines, 
+           MainControl* main_control, 
+           HazardControl* hazard_control, 
+           BranchPredictionSystem* branch_prediction, 
+           SpeculationController* speculation_control
+        ): machine_(machine), pipelines_(pipelines), main_control_(main_control), 
+        hazard_control_(hazard_control), branch_prediction_(branch_prediction), 
+        speculation_control_(speculation_control) 
+{
+    if (machine_== nullptr || main_control_ == nullptr || hazard_control_ == nullptr || 
+        branch_prediction_ == nullptr || speculation_control_ == nullptr) 
+            throw std::runtime_error("CPU core received a null component");
+    for (std::size_t i=0; i<pipelines_.size(); ++i) 
+        if(pipelines_[i] == nullptr || pipelines_[i]->kind()!=static_cast<ExecutionUnitKind>(i)) 
+            throw std::runtime_error("CPU core execution-unit registration mismatch");
 }
 void Core::ResetRegister(RegisterKind kind){ if(kind!=RegisterKind::kPc)return; pc_=machine_->EntryPoint(); next_pc_=pc_; fetch_stopped_=false; next_fetch_stopped_=false; if_id_=FrontendLatch(); next_if_id_=FrontendLatch(); current_boundary_=0; cycle_begun_=false; for(auto& s:snapshots_)s=StageSnapshot(); }
 void Core::CommitRegister(RegisterKind kind){ if(kind!=RegisterKind::kPc)return; if(!cycle_begun_||!pipelines_operated_) throw std::runtime_error("CPU core commit without a complete operate pass"); pc_=next_pc_; fetch_stopped_=next_fetch_stopped_; if_id_=next_if_id_; if(current_boundary_==std::numeric_limits<std::uint64_t>::max()) throw std::runtime_error("CPU boundary counter overflow"); ++current_boundary_; cycle_begun_=false; }

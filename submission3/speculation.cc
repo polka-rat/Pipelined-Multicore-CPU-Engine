@@ -15,11 +15,12 @@ SpeculationController::~SpeculationController() = default;
 
 void SpeculationController::Reset() {
   impl_->checkpoints.clear();
-  throw std::runtime_error("SpeculationController::Reset: TODO(PA3-FRAMEWORK-01)");
+  // throw std::runtime_error("SpeculationController::Reset: TODO(PA3-FRAMEWORK-01)");
 }
 
 bool SpeculationController::CanFetch() const {
-  throw std::runtime_error("SpeculationController::CanFetch: TODO(PA3-FRAMEWORK-01)");
+  return (impl_->checkpoints.size() < impl_->maximum_checkpoints);
+  // throw std::runtime_error("SpeculationController::CanFetch: TODO(PA3-FRAMEWORK-01)");
 }
 
 bool SpeculationController::CanDispatch(
@@ -27,24 +28,54 @@ bool SpeculationController::CanDispatch(
     const Instruction& instruction) const {
   (void)sequence;
   (void)instruction;
-  throw std::runtime_error("SpeculationController::CanDispatch: TODO(PA3-FRAMEWORK-02)");
+  if (!IsSpeculative(sequence)) return true;
+  
+  switch (instruction.opcode)
+  {
+    case Opcode::kAdd:
+    case Opcode::kSub:
+    case Opcode::kAnd:
+    case Opcode::kOr:
+    case Opcode::kXor:
+    case Opcode::kAddi:
+      return true;
+    
+    default:
+      return false;
+  }
+  
+  // throw std::runtime_error("SpeculationController::CanDispatch: TODO(PA3-FRAMEWORK-02)");
 }
 
 void SpeculationController::AddCheckpoint(
     const BranchCheckpoint& checkpoint) {
   (void)checkpoint;
-  throw std::runtime_error("SpeculationController::AddCheckpoint: TODO(PA3-FRAMEWORK-03)");
+  impl_->checkpoints.push_back(checkpoint);
+  return;
+  // throw std::runtime_error("SpeculationController::AddCheckpoint: TODO(PA3-FRAMEWORK-03)");
 }
 
 bool SpeculationController::IsSpeculative(std::uint64_t sequence) const {
   (void)sequence;
-  throw std::runtime_error("SpeculationController::IsSpeculative: TODO(PA3-FRAMEWORK-03)");
+  for (const auto& checkpoint: impl_->checkpoints) {
+    if (checkpoint.sequence < sequence) {
+      return true;
+    }
+  }
+  return false;
+  // throw std::runtime_error("SpeculationController::IsSpeculative: TODO(PA3-FRAMEWORK-03)");
 }
 
 std::uint64_t SpeculationController::SpeculationDepth(
     std::uint64_t sequence) const {
   (void)sequence;
-  throw std::runtime_error("SpeculationController::SpeculationDepth: TODO(PA3-FRAMEWORK-03)");
+  uint64_t speculationDepth = 0;
+  for (const auto& checkpoint: impl_->checkpoints) {
+    if (checkpoint.sequence < sequence)
+      speculationDepth++;
+  }
+  return speculationDepth;
+  // throw std::runtime_error("SpeculationController::SpeculationDepth: TODO(PA3-FRAMEWORK-03)");
 }
 
 RecoveryDecision SpeculationController::Resolve(const BranchResult& result) {
