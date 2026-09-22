@@ -85,9 +85,16 @@ BranchPrediction PredictorOne::Predict(std::uint32_t pc) {
 void PredictorOne::ObserveInstruction(
     const Instruction& instruction,
     const BranchPrediction& prediction) {
-  (void)instruction;
-  (void)prediction;
-  throw std::runtime_error("PredictorOne::ObserveInstruction: TODO(PA3-PREDICTOR-ONE)");
+  // (void)instruction;
+  // (void)prediction;
+
+  bool is_branch = (instruction.opcode == Opcode::kBeq || instruction.opcode == Opcode::kBne || instruction.opcode == Opcode::kJ);
+
+  if(prediction.branch_found && !is_branch) metrics_.false_branch_predictions++;
+  if(!prediction.branch_found && is_branch) metrics_.missed_branches++;
+
+  // throw std::runtime_error("PredictorOne::ObserveInstruction: TODO(PA3-PREDICTOR-ONE)");
+  
 }
 
 void PredictorOne::Update(const BranchResult& result,
