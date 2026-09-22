@@ -32,6 +32,18 @@ class PredictorOne final : public BranchPredictor {
   static constexpr unsigned kTagBits = 9;
   static constexpr std::uint16_t kTagMask = (1u << kTagBits) - 1u;
 
+  // information layout: [0:2]-> provider + 1, [3:5] -> alternate + 1 (base is 0),
+  // [6] -> provider_taken, [7] -> alternate_taken, [8] -> metadata_valid,
+  // [9:16] -> provider_entry index, [17:25] -> provider_tag,
+  // [26:57] -> four 8-bit folded histories, [58] -> allocation context valid.
+  // BTB misses retain allocation context but leave bit 8 clear.
+  static constexpr unsigned kProviderIndexShift = 9;
+  static constexpr unsigned kProviderTagShift = 17;
+  static constexpr unsigned kAllocationHistoryShift = 26;
+  static constexpr unsigned kAllocationContextValidBit = kAllocationHistoryShift + kNumTaggedTables * kIndexBits;
+  static_assert(kNumTaggedTables <= 7);
+  static_assert(kAllocationContextValidBit < 64);
+
   struct TaggedTableEntry {
     bool valid = false;
     std::uint16_t tag = 0;       
@@ -46,6 +58,7 @@ class PredictorOne final : public BranchPredictor {
 
   std::uint64_t global_history_ = 0;
   std::uint16_t path_history_ = 0;
+  std::uint32_t allocation_random_state_ = 1;
 
   struct TaggedLookup {
     std::size_t index = 0;
@@ -54,9 +67,13 @@ class PredictorOne final : public BranchPredictor {
   };
 
   // Performing XOR using newest history_length bits to get output_bits bits.
-  static std::uint32_t FoldHistory(std::uint64_t history,
-                                   std::size_t history_length,
-                                   unsigned output_bits);
+  static std::uint32_t FoldHistory(std::uint64_t history, std::size_t history_length, unsigned output_bits);
+
+  // Keep prediction and allocation on exactly the same hash functions.
+  static std::size_t IndexFromFoldedHistory(std::uint32_t pc, std::uint32_t folded_history);
+  static std::uint16_t TagFromFoldedHistory(std::uint32_t pc, std::uint32_t folded_history);
+  std::uint32_t NextAllocationRandom();
+  void AllocateTagged(const BranchResult& result, std::uint64_t information, int provider);
 
   std::size_t TaggedIndex(std::size_t table, std::uint32_t pc) const;
   std::uint16_t TaggedTag(std::size_t table, std::uint32_t pc) const;
@@ -79,4 +96,3 @@ std::array<BranchTableEntry, kBranchTableEntries> branchTable_;
 };
 
 }
-

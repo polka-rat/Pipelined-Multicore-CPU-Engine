@@ -13,6 +13,7 @@ void PredictorOne::Reset() {
 
   global_history_ = 0;
   path_history_ = 0;
+  allocation_random_state_ = 1;
   base_.fill(0);
   branchTable_.fill(BranchTableEntry{});
 
@@ -27,6 +28,15 @@ BranchPrediction PredictorOne::Predict(std::uint32_t pc) {
   metrics_.lookups++;
 
   BranchPrediction prediction {};
+  // Save context even on a BTB miss: decode may later reveal a branch.
+  // This hashes state only; it does not claim that the PC is a branch.
+  for (std::size_t table = 0; table < kNumTaggedTables; ++table) {
+    const auto folded = FoldHistory(global_history_,
+        tagged_tables_hist_len[table], kIndexBits);
+    prediction.information |= static_cast<std::uint64_t>(folded)
+        << (kAllocationHistoryShift + table * kIndexBits);
+  }
+  prediction.information |= std::uint64_t{1} << kAllocationContextValidBit;
   const std::uint32_t bt_ind = (pc >> 2) & (kBranchTableEntries - 1);
   const BranchTableEntry& bt_entry = branchTable_[bt_ind];
 
@@ -49,18 +59,21 @@ BranchPrediction PredictorOne::Predict(std::uint32_t pc) {
   bool alternate_taken = base_taken;
 
   int pred=-1,altpred=-1;
+  TaggedLookup provider_lookup{};
 
   bool strong_pred = base_[base_ind] == 0 || base_[base_ind] == 3;
   bool unconditional = (bt_entry.type == BranchType::kUnconditional);
 
-  for(int i=3;i>=0;i--){
+  for(int i=static_cast<int>(kNumTaggedTables)-1;i>=0;i--){
     PredictorOne::TaggedLookup lookUp = PredictorOne::LookupTagged(i, pc);
 
     if(lookUp.hit){
       if(pred==-1){
         pred=i;
+        provider_lookup = lookUp;
         provider_taken = taggedTables_[pred][lookUp.index].pred_counter>=0;
-        strong_pred = (abs(taggedTables_[pred][lookUp.index].pred_counter) >=3 );
+        const auto counter = taggedTables_[pred][lookUp.index].pred_counter;
+        strong_pred = counter == -4 || counter == 3;
       }
       else{
         altpred=i;
@@ -76,7 +89,14 @@ BranchPrediction PredictorOne::Predict(std::uint32_t pc) {
 
   (prediction.taken) ? metrics_.predicted_taken++ : metrics_.predicted_not_taken++;
 
-  prediction.information = static_cast<std::uint64_t>(pred + 1) | (static_cast<std::uint64_t>(altpred + 1) << 3) | (static_cast<std::uint64_t>(provider_taken) << 6) | (static_cast<std::uint64_t>(alternate_taken) << 7) | (std::uint64_t{1} << 8);
+  prediction.information |=
+      static_cast<std::uint64_t>(pred + 1)
+      | (static_cast<std::uint64_t>(altpred + 1) << 3)
+      | (static_cast<std::uint64_t>(provider_taken) << 6)
+      | (static_cast<std::uint64_t>(alternate_taken) << 7)
+      | (std::uint64_t{1} << 8)
+      | (static_cast<std::uint64_t>(provider_lookup.index) << kProviderIndexShift)
+      | (static_cast<std::uint64_t>(provider_lookup.tag) << kProviderTagShift);
   return prediction;
 
   // throw std::runtime_error("PredictorOne::Predict: TODO(PA3-PREDICTOR-ONE)");
@@ -97,11 +117,73 @@ void PredictorOne::ObserveInstruction(
   
 }
 
-void PredictorOne::Update(const BranchResult& result,
-                          const BranchPrediction& prediction) {
+void PredictorOne::Update(const BranchResult& result, const BranchPrediction& prediction) {
+  if (result.type != BranchType::kConditional && result.type != BranchType::kUnconditional) {
+    throw std::invalid_argument("PredictorOne::Update requires a branch");
+  }
+
+  const auto info = prediction.information;
+  const bool has_metadata = ((info >> 8) & 1u) != 0;
+
+  const int provider = static_cast<int>(info & 7u) - 1;
+  const int alternate = static_cast<int>((info >> 3) & 7u) - 1;
+
+  const bool provider_taken = ((info >> 6) & 1u) != 0;
+  const bool alternate_taken = ((info >> 7) & 1u) != 0;
+
+  if (has_metadata && (provider >= static_cast<int>(kNumTaggedTables) || alternate >= static_cast<int>(kNumTaggedTables) || (alternate >= 0 && alternate >= provider))) {
+    throw std::invalid_argument("invalid saved TAGE provider metadata");
+  }
+
+  const std::size_t provider_index = (info >> kProviderIndexShift) & (kTableEntries - 1);
+  const std::uint16_t provider_tag = static_cast<std::uint16_t>((info >> kProviderTagShift) & kTagMask);
+
+  metrics_.updates++;
+
+  BranchTableEntry bt_entry = {true, result.pc, result.target, result.type };
+  PredictorOne::branchTable_[(result.pc >> 2) & (kBranchTableEntries - 1)] = bt_entry;
+
+  const bool predicted_taken  = prediction.branch_found && prediction.taken;
+
+  if(result.taken != predicted_taken){
+    metrics_.direction_mispredictions++;
+  }
+  else if(result.taken && result.target != prediction.target){
+    metrics_.target_mispredictions++;
+  }
+  else{
+    metrics_.correct_predictions++;
+  }
+
+  if (result.type == BranchType::kConditional) {
+    if (!has_metadata || provider == -1) {
+
+      // A BTB miss has no provider metadata. Train only the PC-indexed base.
+      auto& counter = base_[(result.pc >> 2) & (kBaseTableEntries - 1)];
+      if (result.taken) {
+        if (counter < 3) ++counter;
+      } else {
+        if (counter > 0) --counter;
+      }
+    } else {
+      auto& entry = taggedTables_[provider][provider_index];
+
+      // History may have changed since prediction. Using the saved address and skipped training if the entry has since been invalidated/replaced.
+      if (entry.valid && entry.tag == provider_tag) {
+        updateUsefulBits(entry, result.taken, provider_taken, alternate_taken);
+        updatePredCounter(entry, result.taken);
+      }
+    }
+    if (result.taken != predicted_taken) {
+      // Target-only errors and unconditional jumps do not allocate.
+      AllocateTagged(result, info, has_metadata ? provider : -1);
+    }
+  }
+
+  // appending the outcome after training.
   const std::uint16_t address_bit = (result.pc >> 2) & 1u;
   path_history_ = static_cast<std::uint16_t>((static_cast<std::uint32_t>(path_history_) << 1) | address_bit);
-  global_history_ = static_cast<std::uint64_t>((global_history_ << 1) | std::uint64_t(result.taken));
+  global_history_ = (global_history_ << 1) | std::uint64_t(result.taken);
 
   // throw std::runtime_error("PredictorOne::Update: TODO(PA3-PREDICTOR-ONE)");
 }
@@ -149,23 +231,76 @@ std::uint32_t PredictorOne::FoldHistory(std::uint64_t history,
 std::size_t PredictorOne::TaggedIndex(std::size_t table,
                                      std::uint32_t pc) const {
   const std::size_t length = tagged_tables_hist_len.at(table);
-  const std::uint32_t word_pc = pc >> 2;
-
-
-  const std::uint32_t hash = word_pc ^ (word_pc >> kIndexBits)^ FoldHistory(global_history_, length, kIndexBits);
-
-  return hash & (kTableEntries - 1);
+  return IndexFromFoldedHistory(pc, FoldHistory(global_history_, length, kIndexBits));
 }
 
 std::uint16_t PredictorOne::TaggedTag(std::size_t table,
                                      std::uint32_t pc) const {
   const std::size_t length = tagged_tables_hist_len.at(table);
+  return TagFromFoldedHistory(pc, FoldHistory(global_history_, length, kIndexBits));
+}
+
+std::size_t PredictorOne::IndexFromFoldedHistory(
+    std::uint32_t pc, std::uint32_t folded_history) {
   const std::uint32_t word_pc = pc >> 2;
+  return (word_pc ^ (word_pc >> kIndexBits) ^ folded_history)
+      & (kTableEntries - 1);
+}
 
+std::uint16_t PredictorOne::TagFromFoldedHistory(
+    std::uint32_t pc, std::uint32_t folded_history) {
+  const std::uint32_t word_pc = pc >> 2;
   // Using a different mixing function from the index to avoid equal indices resulting in equal tags. Partial-tag collisions can still occur.
-  const std::uint32_t hash = word_pc ^ (word_pc >> kTagBits) ^ (FoldHistory(global_history_, length, kTagBits - 1) << 1);
-
+  const std::uint32_t hash = word_pc ^ (word_pc >> kTagBits)
+      ^ (folded_history << 1);
   return static_cast<std::uint16_t>(hash & kTagMask);
+}
+
+std::uint32_t PredictorOne::NextAllocationRandom() {
+  // Nonzero-seeded xorshift32; reset makes experiments reproducible.
+  allocation_random_state_ ^= allocation_random_state_ << 13;
+  allocation_random_state_ ^= allocation_random_state_ >> 17;
+  allocation_random_state_ ^= allocation_random_state_ << 5;
+  return allocation_random_state_;
+}
+
+void PredictorOne::AllocateTagged(const BranchResult& result,
+                                  std::uint64_t information, int provider) {
+  if (((information >> kAllocationContextValidBit) & 1u) == 0) return;
+
+  std::array<TaggedLookup, kNumTaggedTables> candidates{};
+  std::array<std::uint32_t, kNumTaggedTables> weights{};
+  std::uint32_t total_weight = 0;
+  for (int table = provider + 1; table < static_cast<int>(kNumTaggedTables); ++table) {
+    const auto folded = static_cast<std::uint32_t>((information >> (kAllocationHistoryShift + table * kIndexBits)) & (kTableEntries - 1));
+    auto& candidate = candidates[table];
+    candidate.index = IndexFromFoldedHistory(result.pc, folded);
+    candidate.tag = TagFromFoldedHistory(result.pc, folded);
+    const auto& entry = taggedTables_[table][candidate.index];
+    if (!entry.valid || entry.useful == 0) {
+      // Each successive shorter history has twice the allocation weight.
+      weights[table] = std::uint32_t{1} << (kNumTaggedTables - 1 - table);
+      total_weight += weights[table];
+    }
+  }
+
+  // Allocation-failure usefulness decrements and periodic aging are separate
+  if (total_weight == 0) return;
+
+  std::uint32_t choice = NextAllocationRandom() % total_weight;
+  for (int table = provider + 1; table < static_cast<int>(kNumTaggedTables); ++table) {
+    if (choice >= weights[table]) {
+      choice -= weights[table];
+      continue;
+    }
+    const auto& candidate = candidates[table];
+    auto& entry = taggedTables_[table][candidate.index];
+    entry.valid = true;
+    entry.tag = candidate.tag;
+    entry.pred_counter = result.taken ? 0 : -1;
+    entry.useful = 0;
+    return; // At most one allocation per misprediction.
+  }
 }
 
 PredictorOne::TaggedLookup PredictorOne::LookupTagged(
@@ -178,4 +313,5 @@ PredictorOne::TaggedLookup PredictorOne::LookupTagged(
   lookup.hit = entry.valid && entry.tag == lookup.tag;
   return lookup;
 }
+
 }
