@@ -57,7 +57,7 @@ void SpeculationController::AddCheckpoint(
 
 bool SpeculationController::IsSpeculative(std::uint64_t sequence) const {
   (void)sequence;
-  for (const auto& checkpoint : impl_->checkpoints) {
+  for (const auto& checkpoint: impl_->checkpoints) {
     if (checkpoint.sequence < sequence) {
       return true;
     }
@@ -69,7 +69,13 @@ bool SpeculationController::IsSpeculative(std::uint64_t sequence) const {
 std::uint64_t SpeculationController::SpeculationDepth(
     std::uint64_t sequence) const {
   (void)sequence;
-  throw std::runtime_error("SpeculationController::SpeculationDepth: TODO(PA3-FRAMEWORK-03)");
+  uint64_t speculationDepth = 0;
+  for (const auto& checkpoint: impl_->checkpoints) {
+    if (checkpoint.sequence < sequence)
+      speculationDepth++;
+  }
+  return speculationDepth;
+  // throw std::runtime_error("SpeculationController::SpeculationDepth: TODO(PA3-FRAMEWORK-03)");
 }
 
 RecoveryDecision SpeculationController::Resolve(const BranchResult& result) {
