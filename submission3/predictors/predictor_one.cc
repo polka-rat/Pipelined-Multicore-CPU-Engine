@@ -193,7 +193,24 @@ void PredictorOne::Update(const BranchResult& result, const BranchPrediction& pr
 }
 
 std::uint64_t PredictorOne::StorageBits() const {
-  throw std::runtime_error("PredictorOne::StorageBits: TODO(PA3-PREDICTOR-ONE)");
+  // Logical hardware storage.
+  const std::uint64_t base_bits = std::uint64_t{kBaseTableEntries} * 2;
+  const std::uint64_t tagged_bits = std::uint64_t{kNumTaggedTables}
+      * kTableEntries * (1 + kTagBits + 3 + 2); // valid, tag, prediction, useful
+  const std::uint64_t btb_bits = std::uint64_t{kBranchTableEntries}
+      * (1 + 32 + 32 + 2); // valid, full PC, target, four-valued BranchType
+
+  // The aging counter ranges from zero through period - 1.
+  std::uint64_t aging_counter_bits = 0;
+  for (auto maximum = kUsefulnessAgingPeriod - 1; maximum != 0; maximum >>= 1) {
+    ++aging_counter_bits;
+  }
+  const std::uint64_t history_bits = 64 + 16; // global and path history
+  const std::uint64_t control_bits = 32 + aging_counter_bits + 1; // RNG, count, phase
+
+  return base_bits + tagged_bits + btb_bits + history_bits + control_bits;
+
+  // throw std::runtime_error("PredictorOne::StorageBits: TODO(PA3-PREDICTOR-ONE)");
 }
 
 const PredictorMetrics& PredictorOne::Metrics() const {
