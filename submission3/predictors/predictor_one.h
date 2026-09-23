@@ -32,6 +32,9 @@ class PredictorOne final : public BranchPredictor {
   static constexpr unsigned kTagBits = 9;
   static constexpr std::uint16_t kTagMask = (1u << kTagBits) - 1u;
 
+  // alternate clearing usefulness bit planes every 256K branches. Aging follows training.
+  static constexpr std::uint32_t kUsefulnessAgingPeriod = 1u << 18;
+
   // information layout: [0:2]-> provider + 1, [3:5] -> alternate + 1 (base is 0),
   // [6] -> provider_taken, [7] -> alternate_taken, [8] -> metadata_valid,
   // [9:16] -> provider_entry index, [17:25] -> provider_tag,
@@ -59,6 +62,9 @@ class PredictorOne final : public BranchPredictor {
   std::uint64_t global_history_ = 0;
   std::uint16_t path_history_ = 0;
   std::uint32_t allocation_random_state_ = 1;
+  // Logical aging state: 18-bit interval counter plus one phase bit.
+  std::uint32_t usefulness_aging_count_ = 0;
+  bool clear_usefulness_high_bit_ = true;
 
   struct TaggedLookup {
     std::size_t index = 0;
@@ -81,6 +87,7 @@ class PredictorOne final : public BranchPredictor {
 
   void updateUsefulBits(TaggedTableEntry & entry, bool actual_taken, bool pred, bool altpred);
   void updatePredCounter(TaggedTableEntry& entry, bool actual_taken);
+  void AgeUsefulness();
 
 
 struct BranchTableEntry{

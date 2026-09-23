@@ -14,6 +14,8 @@ void PredictorOne::Reset() {
   global_history_ = 0;
   path_history_ = 0;
   allocation_random_state_ = 1;
+  usefulness_aging_count_ = 0;
+  clear_usefulness_high_bit_ = true;
   base_.fill(0);
   branchTable_.fill(BranchTableEntry{});
 
@@ -180,6 +182,8 @@ void PredictorOne::Update(const BranchResult& result, const BranchPrediction& pr
     }
   }
 
+  AgeUsefulness();
+
   // appending the outcome after training.
   const std::uint16_t address_bit = (result.pc >> 2) & 1u;
   path_history_ = static_cast<std::uint16_t>((static_cast<std::uint32_t>(path_history_) << 1) | address_bit);
@@ -205,6 +209,23 @@ void PredictorOne::updateUsefulBits(PredictorOne::TaggedTableEntry & entry, bool
   else {
     if(entry.useful>0) entry.useful--;
   }
+}
+
+void PredictorOne::AgeUsefulness() {
+  if (usefulness_aging_count_ < kUsefulnessAgingPeriod - 1) {
+    ++usefulness_aging_count_;
+    return;
+  }
+
+  usefulness_aging_count_ = 0;
+  // First clear bit 1 (keep bit 0), then clear bit 0 (keep bit 1).
+  const std::uint8_t keep_mask = clear_usefulness_high_bit_ ? 1u : 2u;
+  for (auto& table : taggedTables_) {
+    for (auto& entry : table) {
+      entry.useful &= keep_mask;
+    }
+  }
+  clear_usefulness_high_bit_ = !clear_usefulness_high_bit_;
 }
 
 void PredictorOne::updatePredCounter(TaggedTableEntry& entry, bool actual_taken){
@@ -284,8 +305,15 @@ void PredictorOne::AllocateTagged(const BranchResult& result,
     }
   }
 
-  // Allocation-failure usefulness decrements and periodic aging are separate
-  if (total_weight == 0) return;
+  if (total_weight == 0) {
+    // All candidates are useful. Reduce their protection, but do not
+    // allocate this time even if a counter reaches zero.
+    for (int table = provider + 1; table < static_cast<int>(kNumTaggedTables); ++table) {
+      auto& entry = taggedTables_[table][candidates[table].index];
+      if (entry.useful > 0) --entry.useful;
+    }
+    return;
+  }
 
   std::uint32_t choice = NextAllocationRandom() % total_weight;
   for (int table = provider + 1; table < static_cast<int>(kNumTaggedTables); ++table) {
