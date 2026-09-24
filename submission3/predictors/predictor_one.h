@@ -43,6 +43,8 @@ class PredictorOne final : public BranchPredictor {
   [17:25] -> provider_tag,
   [26:57] -> four 8-bit folded histories, 
   [58] -> allocation context valid.
+  [59] -> Pred metadata
+  [60] -> Low margin bit
   BTB misses retain allocation context but leave bit 8 clear.
   */
   static constexpr unsigned kProviderIndexShift = 9;
@@ -50,6 +52,7 @@ class PredictorOne final : public BranchPredictor {
   static constexpr unsigned kAllocationHistoryShift = 26;
   static constexpr unsigned kAllocationContextValidBit = kAllocationHistoryShift + kNumTaggedTables * kIndexBits;
   static constexpr unsigned kSCMetaBit = kAllocationContextValidBit + 1; // Meta for SC
+  static constexpr unsigned kSCLowMarginBit = kSCMetaBit + 1;            // Low margin bit
   static_assert(kNumTaggedTables <= 7);
   static_assert(kAllocationContextValidBit < 64);
 
@@ -126,6 +129,7 @@ static constexpr int kCounterBits = 6;
 // static constexpr int kGlobalCounterBits = 5;
 static constexpr int kCounterMax = 31;   
 static constexpr int kCounterMin = -32;
+static constexpr int kSCThreshold = 16;
 // static constexpr int kGlobalCounterMax = 15; 
 // static constexpr int kGlobalCounterMin = -16;  
 

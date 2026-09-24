@@ -100,7 +100,9 @@ BranchPrediction PredictorOne::Predict(std::uint32_t pc) {
     int scSum = GetSCSum(pc, provider_taken, prediction.information);
     bool scPred = scSum >= 0;
     final_taken = scPred;
+    const bool scLowMargin = ((scSum < 0) ? -scSum : scSum) < kSCThreshold;
     prediction.information |= static_cast<std::uint64_t>(scPred) << kSCMetaBit;
+    prediction.information |= static_cast<std::uint64_t>(scLowMargin) << kSCLowMarginBit;
   }
 
   // prediction.taken = bt_entry.type == BranchType::kUnconditional ? true : provider_taken;
@@ -145,8 +147,9 @@ void PredictorOne::Update(const BranchResult& result, const BranchPrediction& pr
 
   const auto info = prediction.information;
 
-  // Recover SC meta
+  // Recover SC meta and low margin for sc confidence
   const bool scPred = ((info >> kSCMetaBit) & 1u) != 0;
+  const bool scLowMargin = ((info >> kSCLowMarginBit) & 1u) != 0;
 
   const bool has_metadata = ((info >> 8) & 1u) != 0;
 
@@ -183,7 +186,7 @@ void PredictorOne::Update(const BranchResult& result, const BranchPrediction& pr
   if (result.type == BranchType::kConditional) {
     // SC counter updation logic
     bool isSCWrong = scPred != result.taken;
-    if (isSCWrong) {
+    if (isSCWrong || scLowMargin) {
       for (std::size_t table = 0; table < kSCNumTables; ++table) {
         const std::size_t index = GetSCIndex(result.pc, provider_taken, info, table);
         auto& counter = SCTables_[table][index];
