@@ -359,4 +359,18 @@ PredictorOne::TaggedLookup PredictorOne::LookupTagged(
   return lookup;
 }
 
+//* SC related implementations
+
+std::size_t PredictorOne::GetSCBiasIndex(std::uint32_t pc, bool isTAGETake, std::size_t table) {
+  std::uint32_t val = pc >> 2;
+  return val % kBiasEntries;
+}
+
+std::size_t PredictorOne::GetSCGlobalIndex(std::uint32_t pc, std::uint32_t foldedHistory, std::size_t table) {
+  std::uint32_t val = pc >> 2;
+  val ^= foldedHistory;
+  return val % kGlobalSCEntries;
+}
+
+
 }

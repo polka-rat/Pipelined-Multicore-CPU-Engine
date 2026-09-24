@@ -13,10 +13,8 @@ class PredictorOne final : public BranchPredictor {
   std::string Name() const override;
   void Reset() override;
   BranchPrediction Predict(std::uint32_t pc) override;
-  void ObserveInstruction(const Instruction& instruction,
-                          const BranchPrediction& prediction) override;
-  void Update(const BranchResult& result,
-              const BranchPrediction& prediction) override;
+  void ObserveInstruction(const Instruction& instruction, const BranchPrediction& prediction) override;
+  void Update(const BranchResult& result, const BranchPrediction& prediction) override;
   std::uint64_t StorageBits() const override;
   const PredictorMetrics& Metrics() const override;
 
@@ -35,11 +33,18 @@ class PredictorOne final : public BranchPredictor {
   // alternate clearing usefulness bit planes every 256K branches. Aging follows training.
   static constexpr std::uint32_t kUsefulnessAgingPeriod = 1u << 18;
 
-  // information layout: [0:2]-> provider + 1, [3:5] -> alternate + 1 (base is 0),
-  // [6] -> provider_taken, [7] -> alternate_taken, [8] -> metadata_valid,
-  // [9:16] -> provider_entry index, [17:25] -> provider_tag,
-  // [26:57] -> four 8-bit folded histories, [58] -> allocation context valid.
-  // BTB misses retain allocation context but leave bit 8 clear.
+  /* information layout: 
+  [0:2]-> provider + 1, 
+  [3:5] -> alternate + 1 (base is 0),
+  [6] -> provider_taken, 
+  [7] -> alternate_taken, 
+  [8] -> metadata_valid,
+  [9:16] -> provider_entry index, 
+  [17:25] -> provider_tag,
+  [26:57] -> four 8-bit folded histories, 
+  [58] -> allocation context valid.
+  BTB misses retain allocation context but leave bit 8 clear.
+  */
   static constexpr unsigned kProviderIndexShift = 9;
   static constexpr unsigned kProviderTagShift = 17;
   static constexpr unsigned kAllocationHistoryShift = 26;
@@ -99,6 +104,23 @@ struct BranchTableEntry{
 
 static constexpr std::size_t kBranchTableEntries = 1024;
 std::array<BranchTableEntry, kBranchTableEntries> branchTable_;
+
+
+//* SC related variables and functions
+
+static constexpr std::size_t kBiasEntries = 256;      // No. of entries in a bias table
+std::array<std::uint8_t, kBiasEntries> SCBias_[2];    // Two tables for bias component
+
+static constexpr std::size_t kGlobalSCEntries = 256;  // No. of entries in a GeHL table
+static constexpr std::size_t kGlobalSCTables = 4;     // No. of GeHL tables
+std::array<std::array<std::int8_t, kGlobalSCEntries>, kGlobalSCTables> SCGlobal_;
+
+// Geometrically increasing history lengths for each GeHL
+static constexpr std::array<std::size_t, kGlobalSCTables> kSCGlobalHistoryLen = {4, 8, 16, 32};
+
+// Get bias table index
+std::size_t GetSCBiasIndex(std::uint32_t pc, bool isTAGETake, std::size_t table);
+std::size_t PredictorOne::GetSCGlobalIndex(std::uint32_t pc, std::uint32_t foldedHistory, std::size_t table);
 
 };
 
