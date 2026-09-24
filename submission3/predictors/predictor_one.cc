@@ -23,6 +23,15 @@ void PredictorOne::Reset() {
     table.fill(TaggedTableEntry{});
   }
 
+  // Reset SC components too
+  for (auto& table : SCTables_) {
+    table.fill(0);
+  }
+
+  // for (auto& table : SCGlobal_) {
+  //   table.fill(0);
+  // }
+
 }
 
 BranchPrediction PredictorOne::Predict(std::uint32_t pc) {
@@ -361,35 +370,31 @@ PredictorOne::TaggedLookup PredictorOne::LookupTagged(
 
 //* SC related implementations
 
-std::size_t PredictorOne::GetSCBiasIndex(std::uint32_t pc, bool isTAGETake, std::size_t table) {
-  // remove the last two bits since pc is 4B aligned
-  std::uint32_t val = pc >> 2;
-  val ^= static_cast<std::uint32_t>(isTAGETake);
-  val ^= static_cast<std::uint32_t>(table);
-  return val % kBiasEntries;
-}
+std::size_t PredictorOne::GetSCIndex(std::uint32_t pc, bool isTAGETaken, std::uint64_t information, std::size_t table) {
+  std::uint32_t wpc = pc >> 2;
+  std::uint32_t val;
 
-std::size_t PredictorOne::GetSCGlobalIndex(std::uint32_t pc, std::uint32_t foldedHistory, std::size_t table) {
-  std::uint32_t val = pc >> 2;
-  val ^= foldedHistory;
-  val ^= static_cast<std::uint32_t>(table);
-  return val % kGlobalSCEntries;
-}
-
-int PredictorOne::GetSCSum(std::uint32_t pc, bool isTAGETaken) {
-  std::size_t i1 = GetSCBiasIndex(pc, isTAGETaken, 0);
-  std::size_t i2 = GetSCBiasIndex(pc, isTAGETaken, 1);
-
-  // Bias contribution
-  int sum = SCBias_[0][i1] + SCBias_[1][i2];
-
-  // GeHL contribution
-  for (std::size_t i = 0; i < kGlobalSCTables; i++) {
-    std::uint32_t foldedHistory = FoldHistory(global_history_, kSCGlobalHistoryLenArray[i], 8);
-    std::size_t j = GetSCGlobalIndex(pc, foldedHistory, i);
-    sum += SCGlobal_[i][j];
+  if (table < 2) {
+    val = wpc ^ static_cast<std::uint32_t>(table);
+  } else {
+    std::uint32_t fold = 0;
+    if (table == 2) fold = (information >> 26) & 0x0Fu;
+    else if (table == 3) fold = (information >> 26) & 0xFFu;
+    else if (table == 4) fold = (information >> 34) & 0xFFu;
+    else fold = (information >> 42) & 0xFFu;
+    val = wpc ^ fold;
   }
 
+  std::uint32_t hash = val & 0x3F;
+  return (hash << 1) | static_cast<std::uint32_t>(isTAGETaken);
+}
+
+int PredictorOne::GetSCSum(std::uint32_t pc, bool isTAGETaken, std::uint64_t information) {
+  int sum = 0;
+  for (std::size_t table = 0; table < 6; table++) {
+    std::size_t index = GetSCIndex(pc, isTAGETaken, information, table);
+    sum = SCTables_[table][index];
+  }
   return sum;
 }
 

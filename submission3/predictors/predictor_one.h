@@ -108,20 +108,30 @@ std::array<BranchTableEntry, kBranchTableEntries> branchTable_;
 
 //* SC related variables and functions
 
-static constexpr std::size_t kBiasEntries = 256;      // No. of entries in a bias table
-std::array<std::int8_t, kBiasEntries> SCBias_[2];    // Two tables for bias component
+static constexpr std::size_t kSCNumEntries = 128;       // No. of entries in a bias table
+// static constexpr std::size_t kSCNumGehlEntries = 128;       // No. of entries in a GeHL table
 
-static constexpr std::size_t kGlobalSCEntries = 256;  // No. of entries in a GeHL table
-static constexpr std::size_t kGlobalSCTables = 4;     // No. of GeHL tables
-std::array<std::array<std::int8_t, kGlobalSCEntries>, kGlobalSCTables> SCGlobal_;
+static constexpr std::size_t kSCNumBiasTables = 2;     // No. of Bias tables
+static constexpr std::size_t kSCNumGehlTables = 4;     // No. of GeHL tables
+
+// Total number of tables
+static constexpr std::size_t kSCNumTables = kSCNumBiasTables + kSCNumGehlTables;
+std::array<std::array<std::int8_t, kSCNumEntries>, kSCNumTables> SCTables_;
 
 // Geometrically increasing history lengths for each GeHL
-static constexpr std::array<std::size_t, kGlobalSCTables> kSCGlobalHistoryLenArray = {4, 8, 16, 32};
+static constexpr std::array<std::size_t, kSCNumGehlTables> kSCGehlHistoryLenArray = {4, 8, 16, 32};
+
+static constexpr int kCounterBits = 6;
+// static constexpr int kGlobalCounterBits = 5;
+static constexpr int kCounterMax = 31;   
+static constexpr int kCounterMin = -32;
+// static constexpr int kGlobalCounterMax = 15; 
+// static constexpr int kGlobalCounterMin = -16;  
 
 // Get bias table index
-std::size_t GetSCBiasIndex(std::uint32_t pc, bool isTAGETake, std::size_t table);
-std::size_t PredictorOne::GetSCGlobalIndex(std::uint32_t pc, std::uint32_t foldedHistory, std::size_t table);
-int GetSCSum(std::uint32_t pc, bool isTAGETaken);
+std::size_t GetSCIndex(std::uint32_t pc, bool isTAGETake, std::uint64_t information, std::size_t table);
+// std::size_t GetSCGlobalIndex(std::uint32_t pc, std::uint32_t foldedHistory, std::size_t table);
+int GetSCSum(std::uint32_t pc, bool isTAGETaken, std::uint64_t information);
 };
 
 }
