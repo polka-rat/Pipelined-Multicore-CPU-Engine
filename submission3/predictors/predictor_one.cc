@@ -94,7 +94,16 @@ BranchPrediction PredictorOne::Predict(std::uint32_t pc) {
     }
   }
 
-  prediction.taken = bt_entry.type == BranchType::kUnconditional ? true : provider_taken;
+  // SC part
+  bool final_taken = provider_taken;
+  if (!unconditional) {
+    int scSum = GetSCSum(pc, provider_taken, prediction.information);
+    bool scPred = scSum >= 0;
+    final_taken = scPred;
+  }
+
+  // prediction.taken = bt_entry.type == BranchType::kUnconditional ? true : provider_taken;
+  prediction.taken = bt_entry.type == BranchType::kUnconditional ? true : final_taken;
 
   prediction.confidence = (strong_pred || unconditional) ? 1 : 0;
 
