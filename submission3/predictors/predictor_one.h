@@ -109,19 +109,19 @@ std::array<BranchTableEntry, kBranchTableEntries> branchTable_;
 //* SC related variables and functions
 
 static constexpr std::size_t kBiasEntries = 256;      // No. of entries in a bias table
-std::array<std::uint8_t, kBiasEntries> SCBias_[2];    // Two tables for bias component
+std::array<std::int8_t, kBiasEntries> SCBias_[2];    // Two tables for bias component
 
 static constexpr std::size_t kGlobalSCEntries = 256;  // No. of entries in a GeHL table
 static constexpr std::size_t kGlobalSCTables = 4;     // No. of GeHL tables
 std::array<std::array<std::int8_t, kGlobalSCEntries>, kGlobalSCTables> SCGlobal_;
 
 // Geometrically increasing history lengths for each GeHL
-static constexpr std::array<std::size_t, kGlobalSCTables> kSCGlobalHistoryLen = {4, 8, 16, 32};
+static constexpr std::array<std::size_t, kGlobalSCTables> kSCGlobalHistoryLenArray = {4, 8, 16, 32};
 
 // Get bias table index
 std::size_t GetSCBiasIndex(std::uint32_t pc, bool isTAGETake, std::size_t table);
 std::size_t PredictorOne::GetSCGlobalIndex(std::uint32_t pc, std::uint32_t foldedHistory, std::size_t table);
-
+int GetSCSum(std::uint32_t pc, bool isTAGETaken);
 };
 
 }

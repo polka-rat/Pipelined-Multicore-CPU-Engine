@@ -362,15 +362,35 @@ PredictorOne::TaggedLookup PredictorOne::LookupTagged(
 //* SC related implementations
 
 std::size_t PredictorOne::GetSCBiasIndex(std::uint32_t pc, bool isTAGETake, std::size_t table) {
+  // remove the last two bits since pc is 4B aligned
   std::uint32_t val = pc >> 2;
+  val ^= static_cast<std::uint32_t>(isTAGETake);
+  val ^= static_cast<std::uint32_t>(table);
   return val % kBiasEntries;
 }
 
 std::size_t PredictorOne::GetSCGlobalIndex(std::uint32_t pc, std::uint32_t foldedHistory, std::size_t table) {
   std::uint32_t val = pc >> 2;
   val ^= foldedHistory;
+  val ^= static_cast<std::uint32_t>(table);
   return val % kGlobalSCEntries;
 }
 
+int PredictorOne::GetSCSum(std::uint32_t pc, bool isTAGETaken) {
+  std::size_t i1 = GetSCBiasIndex(pc, isTAGETaken, 0);
+  std::size_t i2 = GetSCBiasIndex(pc, isTAGETaken, 1);
+
+  // Bias contribution
+  int sum = SCBias_[0][i1] + SCBias_[1][i2];
+
+  // GeHL contribution
+  for (std::size_t i = 0; i < kGlobalSCTables; i++) {
+    std::uint32_t foldedHistory = FoldHistory(global_history_, kSCGlobalHistoryLenArray[i], 8);
+    std::size_t j = GetSCGlobalIndex(pc, foldedHistory, i);
+    sum += SCGlobal_[i][j];
+  }
+
+  return sum;
+}
 
 }
