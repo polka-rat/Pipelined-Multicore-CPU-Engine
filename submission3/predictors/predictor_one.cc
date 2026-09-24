@@ -100,6 +100,7 @@ BranchPrediction PredictorOne::Predict(std::uint32_t pc) {
     int scSum = GetSCSum(pc, provider_taken, prediction.information);
     bool scPred = scSum >= 0;
     final_taken = scPred;
+    prediction.information |= static_cast<std::uint64_t>(scPred) << kSCMetaBit;
   }
 
   // prediction.taken = bt_entry.type == BranchType::kUnconditional ? true : provider_taken;
@@ -143,6 +144,10 @@ void PredictorOne::Update(const BranchResult& result, const BranchPrediction& pr
   }
 
   const auto info = prediction.information;
+
+  // Recover SC meta
+  const bool scPred = ((info >> kSCMetaBit) & 1u) != 0;
+
   const bool has_metadata = ((info >> 8) & 1u) != 0;
 
   const int provider = static_cast<int>(info & 7u) - 1;
@@ -176,6 +181,24 @@ void PredictorOne::Update(const BranchResult& result, const BranchPrediction& pr
   }
 
   if (result.type == BranchType::kConditional) {
+    // SC counter updation logic
+    bool isSCWrong = scPred != result.taken;
+    if (isSCWrong) {
+      for (std::size_t table = 0; table < kSCNumTables; ++table) {
+        const std::size_t index = GetSCIndex(result.pc, provider_taken, info, table);
+        auto& counter = SCTables_[table][index];
+        if (result.taken) {
+          if (counter < kCounterMax) {
+            ++counter;
+          }
+        } else {
+          if (counter > kCounterMin) {
+            --counter;
+          }
+        }
+      }
+    } 
+
     if (!has_metadata || provider == -1) {
 
       // A BTB miss has no provider metadata. Train only the PC-indexed base.
@@ -194,7 +217,11 @@ void PredictorOne::Update(const BranchResult& result, const BranchPrediction& pr
         updatePredCounter(entry, result.taken);
       }
     }
-    if (result.taken != predicted_taken) {
+
+    // Done so that TAGE learns from its mistake
+    const bool tage_taken = has_metadata && provider_taken;
+    // changed from predicted_taken to tage_taken, whihc was the original tage prediction
+    if (result.taken != tage_taken) {
       // Target-only errors and unconditional jumps do not allocate.
       AllocateTagged(result, info, has_metadata ? provider : -1);
     }

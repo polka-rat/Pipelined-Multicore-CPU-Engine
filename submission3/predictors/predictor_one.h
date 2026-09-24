@@ -49,6 +49,7 @@ class PredictorOne final : public BranchPredictor {
   static constexpr unsigned kProviderTagShift = 17;
   static constexpr unsigned kAllocationHistoryShift = 26;
   static constexpr unsigned kAllocationContextValidBit = kAllocationHistoryShift + kNumTaggedTables * kIndexBits;
+  static constexpr unsigned kSCMetaBit = kAllocationContextValidBit + 1; // Meta for SC
   static_assert(kNumTaggedTables <= 7);
   static_assert(kAllocationContextValidBit < 64);
 
