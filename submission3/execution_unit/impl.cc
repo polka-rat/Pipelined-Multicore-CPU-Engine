@@ -54,15 +54,17 @@ namespace pipesim {
                     result.redirect=(operation.lhs!=operation.rhs);
                     result.next_pc=result.redirect?operation.instruction.pc+4+static_cast<std::uint32_t>(operation.instruction.immediate):operation.instruction.pc+4;
                     return result;
-                }else if(operation.instruction.opcode==Opcode::kJ){
+                }
+                else if(operation.instruction.opcode==Opcode::kJ){
                     result.redirect=true;
                     result.next_pc=operation.instruction.pc+4+static_cast<std::uint32_t>(operation.instruction.immediate);
                     return result;
-                }else if(operation.instruction.opcode==Opcode::kHalt){
+                }
+                else if(operation.instruction.opcode==Opcode::kHalt){
                     result.halt=true;
                     return result;
                 }
-                // throw std::runtime_error("ExecutionPipeline::ResultFor: unknown control opcode");
+                throw std::runtime_error("ExecutionPipeline::ResultFor: unknown control opcode");
 
             case ExecutionUnitKind::kAgu:
                 result.memory_write=(operation.instruction.opcode==Opcode::kSw);

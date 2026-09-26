@@ -45,13 +45,13 @@ std::unique_ptr<Processor> BuildDesign(Machine* machine) {
   builder.Connect(l1i,l2i,ConnectionType::kData);
 
   //Decode Stage  
-  const NodeId if_id=builder.AddRegister(RegisterRole::kIfId,"IF/ID",new RegisterAdapter(core,RegisterKind::kIfId));
+  const NodeId if_id=builder.AddRegister(RegisterRole::kIfId,"IF_ID",new RegisterAdapter(core,RegisterKind::kIfId));
   builder.Connect(fetch, if_id,ConnectionType::kClockedData);
   const NodeId decode=builder.AddStage(StageRole::kDecode,"ID",new StageAdapter(core,StageRole::kDecode));
   builder.Connect(if_id,decode,ConnectionType::kData);
 
   // Execution Stage
-  const NodeId id_ex=builder.AddRegister(RegisterRole::kIdEx,"ID/EX",new RegisterAdapter(core,RegisterKind::kIdEx));
+  const NodeId id_ex=builder.AddRegister(RegisterRole::kIdEx,"ID_EX",new RegisterAdapter(core,RegisterKind::kIdEx));
   builder.Connect(decode,id_ex,ConnectionType::kClockedData);
   const NodeId execute=builder.AddStage(StageRole::kExecute,"EX",new StageAdapter(core,StageRole::kExecute));
   builder.Connect(id_ex,execute,ConnectionType::kData);
@@ -84,20 +84,20 @@ std::unique_ptr<Processor> BuildDesign(Machine* machine) {
   builder.Connect(control,pc,ConnectionType::kRedirect);
 
   // Memory Stage (with Cache access)
-  const NodeId ex_mem=builder.AddRegister(RegisterRole::kExMem,"EX/MEM",new RegisterAdapter(core,RegisterKind::kExMem));
+  const NodeId ex_mem=builder.AddRegister(RegisterRole::kExMem,"EX_MEM",new RegisterAdapter(core,RegisterKind::kExMem));
   builder.Connect(execute,ex_mem,ConnectionType::kClockedData);
   const NodeId memory=builder.AddStage(StageRole::kMemory,"MEM",new StageAdapter(core,StageRole::kMemory));
   builder.Connect(ex_mem,memory,ConnectionType::kData);
-  const NodeId l1d=builder.AddCache(cache::CacheRole::kL1D,"l1D",new cache::CacheController(cache::CacheRole::kL1D,config.l1d,machine->TransactionIds()));
+  const NodeId l1d=builder.AddCache(cache::CacheRole::kL1D,"L1D",new cache::CacheController(cache::CacheRole::kL1D,config.l1d,machine->TransactionIds()));
   builder.Connect(memory,l1d,ConnectionType::kData);
-  const NodeId l2d=builder.AddCache(cache::CacheRole::kL2D,"l2D",new cache::CacheController(cache::CacheRole::kL2D,config.l2d,machine->TransactionIds()));
+  const NodeId l2d=builder.AddCache(cache::CacheRole::kL2D,"L2D",new cache::CacheController(cache::CacheRole::kL2D,config.l2d,machine->TransactionIds()));
   builder.Connect(l1d,l2d,ConnectionType::kData);  
 
   // Connecting agu to mem
   builder.Connect(agu,memory,ConnectionType::kData);
   
   //Writeback Stage
-  const NodeId mem_wb=builder.AddRegister(RegisterRole::kMemWb,"MEM/WB",new RegisterAdapter(core,RegisterKind::kMemWb));
+  const NodeId mem_wb=builder.AddRegister(RegisterRole::kMemWb,"MEM_WB",new RegisterAdapter(core,RegisterKind::kMemWb));
   builder.Connect(memory,mem_wb,ConnectionType::kClockedData);
   const NodeId writeback = builder.AddStage(StageRole::kWriteback,"WB",new StageAdapter(core,StageRole::kWriteback));
   builder.Connect(mem_wb,writeback,ConnectionType::kData);
