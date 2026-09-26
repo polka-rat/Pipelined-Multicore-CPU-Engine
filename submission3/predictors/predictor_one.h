@@ -130,8 +130,8 @@ static constexpr std::array<std::size_t, kSCNumGehlTables> kSCGehlHistoryLenArra
 
 static constexpr int kCounterBits = 6;
 // static constexpr int kGlobalCounterBits = 5;
-// static constexpr int kCounterMax = 31;   
-// static constexpr int kCounterMin = -32;
+static constexpr int kCounterMax = 31;   
+static constexpr int kCounterMin = -32;
 static constexpr int kSCThreshold = 16;
 // static constexpr int kGlobalCounterMax = 15; 
 // static constexpr int kGlobalCounterMin = -16;  
