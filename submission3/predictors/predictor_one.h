@@ -45,6 +45,7 @@ class PredictorOne final : public BranchPredictor {
   [58] -> allocation context valid.
   [59] -> Pred metadata
   [60] -> Low margin bit
+  [61:62] -> Choice bucket
   BTB misses retain allocation context but leave bit 8 clear.
   */
   static constexpr unsigned kProviderIndexShift = 9;
@@ -53,8 +54,10 @@ class PredictorOne final : public BranchPredictor {
   static constexpr unsigned kAllocationContextValidBit = kAllocationHistoryShift + kNumTaggedTables * kIndexBits;
   static constexpr unsigned kSCMetaBit = kAllocationContextValidBit + 1; // Meta for SC
   static constexpr unsigned kSCLowMarginBit = kSCMetaBit + 1;            // Low margin bit
+  static constexpr unsigned kSCChoiceBucketShift = kSCLowMarginBit + 1;  // Choice bucket
   static_assert(kNumTaggedTables <= 7);
   static_assert(kAllocationContextValidBit < 64);
+  static_assert(kSCChoiceBucketShift + 2 < 64);
 
   struct TaggedTableEntry {
     bool valid = false;
@@ -112,7 +115,7 @@ std::array<BranchTableEntry, kBranchTableEntries> branchTable_;
 
 //* SC related variables and functions
 
-static constexpr std::size_t kSCNumEntries = 128;       // No. of entries in a bias table
+static constexpr std::size_t kSCNumEntries = 128;       // No. of entries in the table
 // static constexpr std::size_t kSCNumGehlEntries = 128;       // No. of entries in a GeHL table
 
 static constexpr std::size_t kSCNumBiasTables = 2;     // No. of Bias tables
@@ -127,11 +130,18 @@ static constexpr std::array<std::size_t, kSCNumGehlTables> kSCGehlHistoryLenArra
 
 static constexpr int kCounterBits = 6;
 // static constexpr int kGlobalCounterBits = 5;
-static constexpr int kCounterMax = 31;   
-static constexpr int kCounterMin = -32;
+// static constexpr int kCounterMax = 31;   
+// static constexpr int kCounterMin = -32;
 static constexpr int kSCThreshold = 16;
 // static constexpr int kGlobalCounterMax = 15; 
 // static constexpr int kGlobalCounterMin = -16;  
+
+//Choice counters
+static constexpr int kSCChoiceMax = 15;
+static constexpr int kSCChoiceMin = -16;
+
+// 3 ranges of low margin
+std::array<std::int8_t, 3> SCChoice_;
 
 // Get bias table index
 std::size_t GetSCIndex(std::uint32_t pc, bool isTAGETake, std::uint64_t information, std::size_t table);

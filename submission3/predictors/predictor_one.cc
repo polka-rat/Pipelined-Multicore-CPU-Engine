@@ -28,9 +28,7 @@ void PredictorOne::Reset() {
     table.fill(0);
   }
 
-  // for (auto& table : SCGlobal_) {
-  //   table.fill(0);
-  // }
+  SCChoice_.fill(0);
 
 }
 
@@ -94,15 +92,24 @@ BranchPrediction PredictorOne::Predict(std::uint32_t pc) {
     }
   }
 
-  // SC part
+  //* SC part
   bool final_taken = provider_taken;
   if (!unconditional) {
-    int scSum = GetSCSum(pc, provider_taken, prediction.information);
-    bool scPred = scSum >= 0;
-    final_taken = scPred;
-    const bool scLowMargin = ((scSum < 0) ? -scSum : scSum) < kSCThreshold;
+    const int scSum = GetSCSum(pc, provider_taken, prediction.information);
+    const bool scPred = scSum >= 0;
+    const int scMagnitude = scSum < 0 ? -scSum : scSum;
+    const bool scLowMargin = scMagnitude < kSCThreshold;
+
+    unsigned bucket = 0;
+    // Tage and SC conflict and Tage is more confident
+    if (scPred != provider_taken && strong_pred && scLowMargin) {
+      // 3 range of low margin
+      bucket = scMagnitude < kSCThreshold / 3 ? 1 : scMagnitude < 2 * kSCThreshold / 3 ? 2 : 3;
+      final_taken = SCChoice_[bucket - 1] >= 0 ? scPred : provider_taken;
+    }
     prediction.information |= static_cast<std::uint64_t>(scPred) << kSCMetaBit;
     prediction.information |= static_cast<std::uint64_t>(scLowMargin) << kSCLowMarginBit;
+    prediction.information |= static_cast<std::uint64_t>(bucket) << kSCChoiceBucketShift;
   }
 
   // prediction.taken = bt_entry.type == BranchType::kUnconditional ? true : provider_taken;
@@ -148,6 +155,7 @@ void PredictorOne::Update(const BranchResult& result, const BranchPrediction& pr
   const auto info = prediction.information;
 
   // Recover SC meta and low margin for sc confidence
+  const unsigned choiceBucket = static_cast<unsigned>((info >> kSCChoiceBucketShift) & 0x3u);
   const bool scPred = ((info >> kSCMetaBit) & 1u) != 0;
   const bool scLowMargin = ((info >> kSCLowMarginBit) & 1u) != 0;
 
@@ -185,18 +193,28 @@ void PredictorOne::Update(const BranchResult& result, const BranchPrediction& pr
 
   if (result.type == BranchType::kConditional) {
     // SC counter updation logic
+    if (has_metadata && choiceBucket != 0) {
+      auto& choice = SCChoice_[choiceBucket - 1];
+
+      if (scPred == result.taken) {
+        if (choice < kSCChoiceMax) choice++;
+      } else {
+        if (choice > kSCChoiceMin) choice--;
+      }
+    }
+
     bool isSCWrong = scPred != result.taken;
     if (isSCWrong || scLowMargin) {
-      for (std::size_t table = 0; table < kSCNumTables; ++table) {
+      for (std::size_t table = 0; table < kSCNumTables; table++) {
         const std::size_t index = GetSCIndex(result.pc, provider_taken, info, table);
         auto& counter = SCTables_[table][index];
         if (result.taken) {
           if (counter < kCounterMax) {
-            ++counter;
+            counter++;
           }
         } else {
           if (counter > kCounterMin) {
-            --counter;
+            counter--;
           }
         }
       }
@@ -256,7 +274,9 @@ std::uint64_t PredictorOne::StorageBits() const {
   const std::uint64_t history_bits = 64 + 16; // global and path history
   const std::uint64_t control_bits = 32 + aging_counter_bits + 1; // RNG, count, phase
 
-  return base_bits + tagged_bits + btb_bits + history_bits + control_bits;
+  // SC
+  const std::uint64_t sc_bits = std::uint64_t{kSCNumTables} * kSCNumEntries * kCounterBits + 3 * 5;
+  return base_bits + tagged_bits + btb_bits + history_bits + control_bits + sc_bits;
 
   // throw std::runtime_error("PredictorOne::StorageBits: TODO(PA3-PREDICTOR-ONE)");
 }
@@ -432,8 +452,9 @@ int PredictorOne::GetSCSum(std::uint32_t pc, bool isTAGETaken, std::uint64_t inf
   int sum = 0;
   for (std::size_t table = 0; table < 6; table++) {
     std::size_t index = GetSCIndex(pc, isTAGETaken, information, table);
-    sum = SCTables_[table][index];
+    sum += SCTables_[table][index];
   }
+  sum += isTAGETaken ? 2 * static_cast<int>(kSCNumTables) : -2 * static_cast<int>(kSCNumTables);
   return sum;
 }
 
