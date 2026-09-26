@@ -1,3 +1,35 @@
+#pragma once
+
+#include "branch_prediction.h"
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+namespace pipesim {
+
+class PredictorOne final : public BranchPredictor {
+ public:
+  struct LoopMetrics {
+    std::uint64_t selected = 0;
+    std::uint64_t correct = 0;
+    std::uint64_t incorrect = 0;
+    std::uint64_t table_reads = 0;
+    std::uint64_t table_writes = 0;
+  };
+  const LoopMetrics& GetLoopMetrics() const { return loop_metrics_; }
+  std::string Name() const override;
+  void Reset() override;
+  BranchPrediction Predict(std::uint32_t pc) override;
+  void ObserveInstruction(const Instruction& instruction, const BranchPrediction& prediction) override;
+  void Update(const BranchResult& result, const BranchPrediction& prediction) override;
+  std::uint64_t StorageBits() const override;
+  const PredictorMetrics& Metrics() const override;
+
+ private:
+  PredictorMetrics metrics_;
+
+  //Added
   static constexpr std::size_t kBaseTableEntries = 1024;
   static constexpr std::size_t kTableEntries = 256;
   static constexpr std::size_t kNumTaggedTables = 4;
