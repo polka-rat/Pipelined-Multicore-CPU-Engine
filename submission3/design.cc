@@ -38,6 +38,7 @@ std::unique_ptr<Processor> BuildDesign(Machine* machine) {
   const NodeId speculation_control_node = builder.AddUnit(
       UnitRole::kSpeculationControl,"SPECULATION_CONTROL",speculation_control);
   builder.Connect(speculation_control_node,fetch,ConnectionType::kStall);
+  
   (void)main_control; (void)hazard_control;
 
   //Adding remaining stages of builder [TODO(A2--DESIGN-01)]
@@ -49,6 +50,7 @@ std::unique_ptr<Processor> BuildDesign(Machine* machine) {
   builder.Connect(fetch, if_id,ConnectionType::kClockedData);
   const NodeId decode=builder.AddStage(StageRole::kDecode,"ID",new StageAdapter(core,StageRole::kDecode));
   builder.Connect(if_id,decode,ConnectionType::kData);
+  builder.Connect(speculation_control_node,decode,ConnectionType::kStall);
 
   // Execution Stage
   const NodeId id_ex=builder.AddRegister(RegisterRole::kIdEx,"ID_EX",new RegisterAdapter(core,RegisterKind::kIdEx));
