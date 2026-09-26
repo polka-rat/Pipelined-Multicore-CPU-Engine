@@ -1,27 +1,3 @@
-#pragma once
-
-#include "branch_prediction.h"
-
-#include <array>
-#include <cstddef>
-#include <cstdint>
-
-namespace pipesim {
-
-class PredictorOne final : public BranchPredictor {
- public:
-  std::string Name() const override;
-  void Reset() override;
-  BranchPrediction Predict(std::uint32_t pc) override;
-  void ObserveInstruction(const Instruction& instruction, const BranchPrediction& prediction) override;
-  void Update(const BranchResult& result, const BranchPrediction& prediction) override;
-  std::uint64_t StorageBits() const override;
-  const PredictorMetrics& Metrics() const override;
-
- private:
-  PredictorMetrics metrics_;
-
-  //Added
   static constexpr std::size_t kBaseTableEntries = 1024;
   static constexpr std::size_t kTableEntries = 256;
   static constexpr std::size_t kNumTaggedTables = 4;
@@ -55,6 +31,7 @@ class PredictorOne final : public BranchPredictor {
   static constexpr unsigned kSCMetaBit = kAllocationContextValidBit + 1; // Meta for SC
   static constexpr unsigned kSCLowMarginBit = kSCMetaBit + 1;            // Low margin bit
   static constexpr unsigned kSCChoiceBucketShift = kSCLowMarginBit + 1;  // Choice bucket
+  static constexpr unsigned kLoopSelectedBit = 63;
   static_assert(kNumTaggedTables <= 7);
   static_assert(kAllocationContextValidBit < 64);
   static_assert(kSCChoiceBucketShift + 2 < 64);
@@ -111,6 +88,25 @@ struct BranchTableEntry{
 
 static constexpr std::size_t kBranchTableEntries = 1024;
 std::array<BranchTableEntry, kBranchTableEntries> branchTable_;
+
+// Direct indexed, tagged loop predictor. current counts continuation outcomes
+// in the current invocation; trip is the previously observed count.
+static constexpr std::size_t kLoopEntries = 64;
+static constexpr std::uint16_t kLoopMaxTrip = 1023;
+struct LoopEntry {
+  bool valid = false;
+  std::uint16_t tag = 0;
+  std::uint16_t current = 0;
+  std::uint16_t trip = 0;
+  std::uint8_t confidence = 0;
+  std::uint8_t age = 0;
+  bool direction = true;
+};
+std::array<LoopEntry, kLoopEntries> loop_{};
+LoopMetrics loop_metrics_{};
+static std::size_t LoopIndex(std::uint32_t pc);
+static std::uint16_t LoopTag(std::uint32_t pc);
+void UpdateLoop(std::uint32_t pc, bool taken);
 
 
 //* SC related variables and functions
