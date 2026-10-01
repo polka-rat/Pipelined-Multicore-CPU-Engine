@@ -280,9 +280,11 @@ class CacheController::Impl {
 
   // TODO(A2-CACHE-05): true iff a granted upper response this cycle would
   // drain current OUTPUT (used to plan same-cycle OUTPUT reuse).
- bool OutputWillDrain(bool response_granted) const {
-  return current_output_.valid && response_granted;
-}
+  bool OutputWillDrain(bool response_granted) const {
+    return response_granted &&
+           current_output_.valid &&
+           SelectResponse().owner == ResponseOwner::kOutput;
+  }
 
   // TODO(A2-CACHE-07/08/10): the parallel LOOKUP decision -- hit, MSHR
   // merge/allocate, writeback-forward, or hold with the specific stall
@@ -303,15 +305,89 @@ class CacheController::Impl {
   // reflect whether INDEX is free or about to be vacated into LOOKUP this
   // cycle. Must not mutate state.
   // Existing helpers: FindMshrByLowerId, FindWritebackByLowerId, ValidateEcho, ValidateInbound, OutputWillDrain, DecideLookup.
-  CacheStageIntent StageIntent(const CacheRequest* upper_request,
+    CacheStageIntent StageIntent(const CacheRequest* upper_request,
                                const CacheResponse* lower_response,
                                bool response_granted,
                                bool lower_request_granted) const {
-    (void)upper_request;
-    (void)lower_response;
-    (void)response_granted;
-    (void)lower_request_granted;
-    throw std::runtime_error("CacheController::StageIntent: TODO(A2-CACHE-05)");
+    CacheStageIntent intent;
+    bool fill_uses_lookup = false;
+    int granted_writeback = -1;
+
+    if (upper_request != nullptr) {
+      ValidateInbound(*upper_request);
+    }
+
+    if (lower_request_granted) {
+      const auto choice = SelectLowerRequest();
+      if (choice.owner == RequestOwner::kNone) {
+        throw std::runtime_error(
+            "lower request grant with no candidate");
+      }
+      if (choice.owner == RequestOwner::kWriteback) {
+        granted_writeback = static_cast<int>(choice.entry);
+      }
+    }
+
+    if (lower_response != nullptr) {
+      ValidateResponsePayload(*lower_response);
+
+      const int mshr = FindMshrByLowerId(lower_response->id);
+      const int writeback =
+          FindWritebackByLowerId(lower_response->id);
+
+      if (mshr >= 0 && writeback >= 0) {
+        throw std::runtime_error("duplicate lower response owner");
+      }
+
+      if (mshr >= 0) {
+        const auto& entry = current_mshrs_[mshr];
+        if (entry.state != OwnerState::kInFlight) {
+          throw std::runtime_error(
+              "MSHR response owner is not in flight");
+        }
+        ValidateEcho(*lower_response, entry.lower_request,
+                     ResponseType::kReadData);
+        intent.accept_lower_response = true;
+        fill_uses_lookup = true;
+      } else if (writeback >= 0) {
+        const auto& entry = current_writebacks_[writeback];
+        if (entry.state != OwnerState::kInFlight) {
+          throw std::runtime_error(
+              "writeback response owner is not in flight");
+        }
+        ValidateEcho(*lower_response, entry.lower_request,
+                     ResponseType::kWritebackAck);
+        intent.accept_lower_response = true;
+      } else {
+        throw std::runtime_error("lower response has no owner");
+      }
+    }
+
+    const bool output_space =
+        !current_output_.valid || OutputWillDrain(response_granted);
+
+    bool lookup_will_advance = false;
+    if (current_lookup_.valid && !fill_uses_lookup) {
+      const auto decision =
+          DecideLookup(output_space, granted_writeback);
+      lookup_will_advance =
+          decision.kind != LookupKind::kHold &&
+          decision.kind != LookupKind::kEmpty;
+    }
+
+    const bool lookup_space =
+        !current_lookup_.valid || lookup_will_advance;
+
+    const bool index_will_advance =
+        current_index_.valid &&
+        lookup_space &&
+        !fill_uses_lookup;
+
+    intent.accept_upper_request =
+        upper_request != nullptr &&
+        (!current_index_.valid || index_will_advance);
+
+    return intent;
   }
 
   // TODO(A2-CACHE-08): construct a waiter (initialize both response flags
