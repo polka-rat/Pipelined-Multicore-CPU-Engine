@@ -1188,33 +1188,139 @@ class CacheController::Impl {
   // evictions/dirty_evictions/primary_misses exactly once each as
   // applicable; clear LOOKUP.
   // Existing helpers: SelectVictim, PeekVictim, MakeMshrWaiter, InsertWriteback.
-  void ApplyMshrAllocation(const LookupDecision& decision,
+    void ApplyMshrAllocation(const LookupDecision& decision,
                            int granted_writeback) {
-    (void)decision;
-    (void)granted_writeback;
-    throw std::runtime_error(
-        "CacheController::ApplyMshrAllocation: TODO(A2-CACHE-08)");
+    if (decision.mshr < 0 || decision.victim_way < 0) {
+      throw std::runtime_error("invalid MSHR allocation decision");
+    }
+
+    const auto& pipeline = current_lookup_;
+    const auto& victim =
+        current_lines_[pipeline.address.set][decision.victim_way];
+
+    const bool dirty = victim.valid && victim.dirty;
+    std::uint32_t victim_address = 0;
+    bool new_writeback = false;
+
+    if (dirty) {
+      victim_address = static_cast<std::uint32_t>(
+          (static_cast<std::uint64_t>(victim.tag) * config_.sets +
+           pipeline.address.set) * config_.line_size);
+
+      const auto plan = PlanWriteback(
+          victim_address, config_.line_size, 0, granted_writeback);
+
+      if (!plan.allowed) {
+        throw std::runtime_error(
+            "dirty eviction has no writeback resources");
+      }
+      new_writeback = plan.merge_entries.empty();
+    }
+
+    const auto ids = transaction_ids_->ReserveBatch(
+        SourceForRole(role_), new_writeback ? 2 : 1);
+
+    const int way = SelectVictim(pipeline.address.set);
+    if (way != decision.victim_way) {
+      throw std::runtime_error(
+          "victim selection differs from planned victim");
+    }
+
+    if (dirty) {
+      InsertWriteback(
+          victim_address, victim.data, pipeline.arrival_order,
+          std::nullopt, granted_writeback,
+          new_writeback
+              ? std::optional<std::uint64_t>(ids[1])
+              : std::nullopt);
+      ++next_stats_.dirty_evictions;
+    }
+
+    if (victim.valid) {
+      ++next_stats_.evictions;
+    }
+
+    auto& line = next_lines_[pipeline.address.set][way];
+    line.valid = false;
+    line.dirty = false;
+    line.reserved = true;
+
+    auto& mshr = next_mshrs_[decision.mshr];
+    mshr = MshrEntry{};
+    mshr.valid = true;
+    mshr.block_address = pipeline.address.block;
+    mshr.set = pipeline.address.set;
+    mshr.tag = pipeline.address.tag;
+    mshr.reserved_way = static_cast<std::uint32_t>(way);
+    mshr.arrival_order = pipeline.arrival_order;
+    mshr.state = OwnerState::kUnsent;
+
+    mshr.lower_request = pipeline.request;
+    mshr.lower_request.id = ids[0];
+    mshr.lower_request.address = pipeline.address.block;
+    mshr.lower_request.size = config_.line_size;
+    mshr.lower_request.type = RequestType::kRead;
+    mshr.lower_request.data.clear();
+
+    mshr.waiters.push_back(MakeMshrWaiter(pipeline));
+
+    ++next_stats_.primary_misses;
+    next_lookup_ = PipelineEntry{};
   }
 
   // TODO(A2-CACHE-10): forward an upper writeback into InsertWriteback with
   // its own ack waiter; clear LOOKUP.
   // Existing helpers: MakeWritebackWaiter.
-  void ApplyWritebackForward(int granted_writeback) {
-    (void)granted_writeback;
-    throw std::runtime_error(
-        "CacheController::ApplyWritebackForward: TODO(A2-CACHE-10)");
+    void ApplyWritebackForward(int granted_writeback) {
+    const auto waiter = MakeWritebackWaiter(current_lookup_);
+
+    InsertWriteback(
+        current_lookup_.request.address,
+        current_lookup_.request.data,
+        current_lookup_.arrival_order,
+        waiter,
+        granted_writeback);
+
+    next_lookup_ = PipelineEntry{};
   }
 
   // TODO(A2-CACHE-13): increment exactly the one stats counter
   // corresponding to `stall` (kNone/kOutput count nothing). See SPEC.md's
   // stall-precedence chain for which counter fires when several reasons
   // could apply.
-  void CountLookupStall(LookupStall stall) {
-    (void)stall;
-    throw std::runtime_error(
-        "CacheController::CountLookupStall: TODO(A2-CACHE-13)");
-  }
+   void CountLookupStall(LookupStall stall) {
+    switch (stall) {
+      case LookupStall::kNone:
+      case LookupStall::kOutput:
+        return;
 
+      case LookupStall::kMshrWaiterFull:
+        ++next_stats_.mshr_waiter_full_stalls;
+        return;
+
+      case LookupStall::kMshrFull:
+        ++next_stats_.mshr_full_stalls;
+        return;
+
+      case LookupStall::kReservedWay:
+        ++next_stats_.reserved_way_stalls;
+        return;
+
+      case LookupStall::kWritebackOrder:
+        ++next_stats_.writeback_order_stalls;
+        return;
+
+      case LookupStall::kWritebackWaiterFull:
+        ++next_stats_.writeback_waiter_full_stalls;
+        return;
+
+      case LookupStall::kWritebackFull:
+        ++next_stats_.writeback_full_stalls;
+        return;
+    }
+
+    throw std::runtime_error("invalid lookup stall reason");
+  }
   // TODO(A2-CACHE-12): transition the granted MSHR/writeback UNSENT ->
   // IN_FLIGHT. Granting a demand bumps the oldest eligible writeback's
   // demand_bypasses (capped at 8); granting a writeback resets
@@ -1264,18 +1370,158 @@ class CacheController::Impl {
   // nonexistent candidate, or any owner/echo mismatch -- see ABI.md's
   // error taxonomy.
   // Existing helpers: ResponseIntent, LowerRequestIntent, StageIntent, ValidateInbound, AllocateArrival, MapAddress.
-  void Operate(std::uint64_t current_cycle,
+   void Operate(std::uint64_t current_cycle,
                const CacheRequest* upper_request,
                const CacheResponse* lower_response,
                const CacheOperateGrants& grants) {
     (void)current_cycle;
-    (void)upper_request;
-    (void)lower_response;
-    (void)grants;
+
     if (!begun_ || operated_) {
       throw std::runtime_error("cache Operate lifecycle violation");
     }
-    throw std::runtime_error("CacheController::Operate: TODO(A2-CACHE-12)");
+
+    const auto response = SelectResponse();
+    const auto lower = SelectLowerRequest();
+
+    if (grants.upper_response &&
+        response.owner == ResponseOwner::kNone) {
+      throw std::runtime_error(
+          "upper response grant has no candidate");
+    }
+    if (grants.lower_request &&
+        lower.owner == RequestOwner::kNone) {
+      throw std::runtime_error(
+          "lower request grant has no candidate");
+    }
+    if (grants.lower_response && lower_response == nullptr) {
+      throw std::runtime_error(
+          "lower response grant has no response");
+    }
+    if (grants.upper_request && upper_request == nullptr) {
+      throw std::runtime_error(
+          "upper request grant has no request");
+    }
+
+    const auto stage = StageIntent(
+        upper_request, lower_response,
+        grants.upper_response, grants.lower_request);
+
+    if (grants.upper_request && !stage.accept_upper_request) {
+      throw std::runtime_error(
+          "upper request grant violates backpressure");
+    }
+    if (grants.lower_response && !stage.accept_lower_response) {
+      throw std::runtime_error(
+          "lower response grant has no ready owner");
+    }
+    if (grants.upper_request &&
+        next_arrival_ == std::numeric_limits<std::uint64_t>::max()) {
+      throw std::runtime_error(
+          "cache arrival-order counter overflow");
+    }
+
+    const bool fill =
+        grants.lower_response &&
+        FindMshrByLowerId(lower_response->id) >= 0;
+
+    const int granted_writeback =
+        grants.lower_request &&
+                lower.owner == RequestOwner::kWriteback
+            ? static_cast<int>(lower.entry)
+            : -1;
+
+    const bool output_drains =
+        OutputWillDrain(grants.upper_response);
+
+    const auto lookup =
+        fill
+            ? LookupDecision{}
+            : DecideLookup(
+                  !current_output_.valid || output_drains,
+                  granted_writeback);
+
+    const bool lookup_advanced =
+        !fill &&
+        current_lookup_.valid &&
+        lookup.kind != LookupKind::kHold &&
+        lookup.kind != LookupKind::kEmpty;
+
+    const bool index_advanced =
+        !fill &&
+        current_index_.valid &&
+        (!current_lookup_.valid || lookup_advanced);
+
+    if (grants.upper_response) {
+      ApplyResponseGrant();
+    }
+    if (grants.lower_response) {
+      ApplyLowerResponse(*lower_response);
+    }
+
+    if (!fill) {
+      switch (lookup.kind) {
+        case LookupKind::kEmpty:
+          break;
+
+        case LookupKind::kHit:
+          ApplyHit(lookup);
+          break;
+
+        case LookupKind::kMshrMerge:
+          ApplyMshrMerge(lookup.mshr);
+          break;
+
+        case LookupKind::kMshrAllocate:
+          ApplyMshrAllocation(lookup, granted_writeback);
+          break;
+
+        case LookupKind::kWritebackForward:
+          ApplyWritebackForward(granted_writeback);
+          break;
+
+        case LookupKind::kHold:
+          CountLookupStall(lookup.stall);
+          break;
+      }
+    }
+
+    if (index_advanced) {
+      next_lookup_ = current_index_;
+      next_index_ = PipelineEntry{};
+    }
+
+    if (grants.upper_request) {
+      PipelineEntry admitted;
+      admitted.valid = true;
+      admitted.request = *upper_request;
+      admitted.arrival_order = AllocateArrival();
+      admitted.address = MapAddress(upper_request->address);
+      next_index_ = std::move(admitted);
+
+      if (upper_request->type == RequestType::kWriteback) {
+        ++next_stats_.writeback_requests_accepted;
+      } else {
+        ++next_stats_.demand_accesses_accepted;
+      }
+    } else if (upper_request != nullptr &&
+               !stage.accept_upper_request) {
+      ++next_stats_.input_queue_stalls;
+    }
+
+    if (current_output_.valid && !output_drains) {
+      ++next_stats_.output_queue_stalls;
+    }
+
+    if (lower.demand_blocked_by_writeback &&
+        grants.lower_request_queue_available) {
+      ++next_stats_.writeback_conflict_stalls;
+    }
+
+    if (grants.lower_request) {
+      ApplyLowerRequestGrant();
+    }
+
+    operated_ = true;
   }
 
   void Commit() {
