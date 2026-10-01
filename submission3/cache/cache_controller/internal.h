@@ -263,10 +263,9 @@ class CacheController::Impl {
 
   // TODO(A2-CACHE-05): true iff a granted upper response this cycle would
   // drain current OUTPUT (used to plan same-cycle OUTPUT reuse).
-  bool OutputWillDrain(bool response_granted) const {
-    (void)response_granted;
-    throw std::runtime_error("CacheController::OutputWillDrain: TODO(A2-CACHE-05)");
-  }
+ bool OutputWillDrain(bool response_granted) const {
+  return current_output_.valid && response_granted;
+}
 
   // TODO(A2-CACHE-07/08/10): the parallel LOOKUP decision -- hit, MSHR
   // merge/allocate, writeback-forward, or hold with the specific stall
