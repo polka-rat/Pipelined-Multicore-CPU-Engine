@@ -268,14 +268,86 @@ class CacheController::Impl {
   // (kWritebackOrder) on any IN_FLIGHT or same-cycle-granted overlap;
   // enforce the bounded combined waiter count; choose the oldest survivor
   // by (arrival_order, id).
-  WritebackPlan PlanWriteback(std::uint32_t address, std::uint32_t size,
+   WritebackPlan PlanWriteback(std::uint32_t address, std::uint32_t size,
                               std::size_t new_waiters,
                               int granted_writeback = -1) const {
-    (void)address;
-    (void)size;
-    (void)new_waiters;
-    (void)granted_writeback;
-    throw std::runtime_error("CacheController::PlanWriteback: TODO(A2-CACHE-11)");
+    WritebackPlan plan;
+    std::uint64_t begin = address;
+    std::uint64_t end = CheckedRangeEnd(address, size);
+    std::vector<bool> included(current_writebacks_.size(), false);
+
+    bool expanded;
+    do {
+      expanded = false;
+      for (std::size_t i = 0; i < current_writebacks_.size(); ++i) {
+        const auto& entry = current_writebacks_[i];
+        if (!entry.valid || entry.state == OwnerState::kAckReady) {
+          continue;
+        }
+
+        const std::uint64_t entry_end =
+            static_cast<std::uint64_t>(entry.address) + entry.size;
+        if (begin >= entry_end || entry.address >= end) {
+          continue;
+        }
+
+        if (entry.state != OwnerState::kUnsent ||
+            static_cast<int>(i) == granted_writeback) {
+          plan.stall = LookupStall::kWritebackOrder;
+          return plan;
+        }
+
+        if (!included[i]) {
+          included[i] = true;
+          plan.merge_entries.push_back(i);
+          begin = std::min(
+              begin, static_cast<std::uint64_t>(entry.address));
+          end = std::max(end, entry_end);
+          expanded = true;
+        }
+      }
+    } while (expanded);
+
+    std::size_t waiter_count = new_waiters;
+    for (const auto i : plan.merge_entries) {
+      if (current_writebacks_[i].waiters.size() >
+              config_.writeback_waiters_per_entry ||
+          waiter_count >
+              config_.writeback_waiters_per_entry -
+                  current_writebacks_[i].waiters.size()) {
+        plan.stall = LookupStall::kWritebackWaiterFull;
+        return plan;
+      }
+      waiter_count += current_writebacks_[i].waiters.size();
+    }
+
+    if (waiter_count > config_.writeback_waiters_per_entry) {
+      plan.stall = LookupStall::kWritebackWaiterFull;
+      return plan;
+    }
+
+    std::sort(
+        plan.merge_entries.begin(), plan.merge_entries.end(),
+        [&](std::size_t a, std::size_t b) {
+          const auto& x = current_writebacks_[a];
+          const auto& y = current_writebacks_[b];
+          return std::tie(x.arrival_order, x.lower_request.id) <
+                 std::tie(y.arrival_order, y.lower_request.id);
+        });
+
+    if (!plan.merge_entries.empty()) {
+      plan.survivor =
+          static_cast<int>(plan.merge_entries.front());
+    } else {
+      plan.survivor = FindFreeWriteback();
+      if (plan.survivor < 0) {
+        plan.stall = LookupStall::kWritebackFull;
+        return plan;
+      }
+    }
+
+    plan.allowed = true;
+    return plan;
   }
 
   // TODO(A2-CACHE-05): true iff a granted upper response this cycle would
@@ -290,11 +362,97 @@ class CacheController::Impl {
   // merge/allocate, writeback-forward, or hold with the specific stall
   // reason, in the priority SPEC.md/ABI.md define. Must not mutate state.
   // Existing helpers: FindHit, FindMshrByBlock, FindFreeMshr, PeekVictim, FindFreeWriteback, PlanWriteback.
-  LookupDecision DecideLookup(bool output_space,
+   LookupDecision DecideLookup(bool output_space,
                               int granted_writeback = -1) const {
-    (void)output_space;
-    (void)granted_writeback;
-    throw std::runtime_error("CacheController::DecideLookup: TODO(A2-CACHE-07)");
+    LookupDecision decision;
+    if (!current_lookup_.valid) return decision;
+
+    const auto& pipeline = current_lookup_;
+    const auto& request = pipeline.request;
+    decision.hit_way = FindHit(pipeline.address);
+    decision.mshr = FindMshrByBlock(pipeline.address.block);
+
+    auto hold = [&](LookupStall stall) {
+      decision.kind = LookupKind::kHold;
+      decision.stall = stall;
+      return decision;
+    };
+
+    if (decision.mshr >= 0) {
+      const auto& mshr = current_mshrs_[decision.mshr];
+
+      if (request.type == RequestType::kWriteback) {
+        return hold(LookupStall::kWritebackOrder);
+      }
+      if (mshr.state == OwnerState::kResponding) {
+        return hold(LookupStall::kReservedWay);
+      }
+      if (mshr.waiters.size() >= config_.mshr_waiters_per_entry) {
+        return hold(LookupStall::kMshrWaiterFull);
+      }
+
+      decision.kind = LookupKind::kMshrMerge;
+      return decision;
+    }
+
+    if (decision.hit_way >= 0) {
+      if (current_lines_[pipeline.address.set]
+                        [decision.hit_way].reserved) {
+        return hold(LookupStall::kReservedWay);
+      }
+      if (!output_space) {
+        return hold(LookupStall::kOutput);
+      }
+
+      decision.kind = LookupKind::kHit;
+      return decision;
+    }
+
+    if (request.type == RequestType::kWriteback) {
+      const auto plan = PlanWriteback(
+          request.address, request.size, 1, granted_writeback);
+      if (!plan.allowed) return hold(plan.stall);
+
+      decision.kind = LookupKind::kWritebackForward;
+      return decision;
+    }
+
+    decision.mshr = FindFreeMshr();
+    if (decision.mshr < 0) {
+      return hold(LookupStall::kMshrFull);
+    }
+
+    const auto eligible = EligibleWays(pipeline.address.set);
+    if (std::none_of(eligible.begin(), eligible.end(),
+                     [](bool value) { return value; })) {
+      return hold(LookupStall::kReservedWay);
+    }
+
+    decision.victim_way = PeekVictim(pipeline.address.set);
+    if (decision.victim_way < 0) {
+      return hold(LookupStall::kReservedWay);
+    }
+
+    const auto& victim =
+        current_lines_[pipeline.address.set][decision.victim_way];
+
+    if (victim.valid && victim.dirty) {
+      const std::uint64_t block =
+          (static_cast<std::uint64_t>(victim.tag) * config_.sets +
+           pipeline.address.set) * config_.line_size;
+
+      if (block > std::numeric_limits<std::uint32_t>::max()) {
+        throw std::runtime_error("victim address overflow");
+      }
+
+      const auto plan = PlanWriteback(
+          static_cast<std::uint32_t>(block),
+          config_.line_size, 0, granted_writeback);
+      if (!plan.allowed) return hold(plan.stall);
+    }
+
+    decision.kind = LookupKind::kMshrAllocate;
+    return decision;
   }
 
   // TODO(A2-CACHE-05): plan three-stage backpressure from current_* state
