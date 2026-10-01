@@ -301,17 +301,36 @@ class CacheController::Impl {
   // false, response_data empty) that records identity/order enough to
   // reconstruct an upward CacheResponse later. See ABI.md's MshrWaiter
   // invariants.
-  MshrWaiter MakeMshrWaiter(const PipelineEntry& pipeline) const {
-    (void)pipeline;
-    throw std::runtime_error("CacheController::MakeMshrWaiter: TODO(A2-CACHE-08)");
+   MshrWaiter MakeMshrWaiter(const PipelineEntry& pipeline) const {
+    MshrWaiter waiter;
+    const auto& request = pipeline.request;
+    waiter.request_id = request.id;
+    waiter.origin_id = request.origin_id;
+    waiter.sequence = request.sequence;
+    waiter.arrival_order = pipeline.arrival_order;
+    waiter.generation = request.generation;
+    waiter.type = request.type;
+    waiter.address = request.address;
+    waiter.size = request.size;
+    waiter.data = request.data;
+    waiter.response_ready = false;
+    waiter.response_sent = false;
+    return waiter;
   }
-
   // TODO(A2-CACHE-10)
-  WritebackAckWaiter MakeWritebackWaiter(
+    WritebackAckWaiter MakeWritebackWaiter(
       const PipelineEntry& pipeline) const {
-    (void)pipeline;
-    throw std::runtime_error(
-        "CacheController::MakeWritebackWaiter: TODO(A2-CACHE-10)");
+    WritebackAckWaiter waiter;
+    const auto& request = pipeline.request;
+    waiter.request_id = request.id;
+    waiter.origin_id = request.origin_id;
+    waiter.sequence = request.sequence;
+    waiter.arrival_order = pipeline.arrival_order;
+    waiter.generation = request.generation;
+    waiter.address = request.address;
+    waiter.size = request.size;
+    waiter.response_sent = false;
+    return waiter;
   }
 
   std::uint64_t AllocateArrival() {
@@ -325,11 +344,35 @@ class CacheController::Impl {
   // (kReadData with the read bytes, kWriteAck, or kWritebackAck).
   CacheResponse ResponseForHit(const PipelineEntry& pipeline,
                                const CacheLine& line) const {
-    (void)pipeline;
-    (void)line;
-    throw std::runtime_error("CacheController::ResponseForHit: TODO(A2-CACHE-07)");
-  }
+    CacheResponse response;
+    const auto& request = pipeline.request;
+    response.id = request.id;
+    response.origin_id = request.origin_id;
+    response.sequence = request.sequence;
+    response.generation = request.generation;
+    response.address = request.address;
+    response.size = request.size;
 
+    switch (request.type) {
+      case RequestType::kRead: {
+        response.type = ResponseType::kReadData;
+        const std::size_t start = pipeline.address.offset;
+        response.data.assign(line.data.begin() + start,
+                             line.data.begin() + start + request.size);
+        break;
+      }
+      case RequestType::kWrite:
+        response.type = ResponseType::kWriteAck;
+        break;
+      case RequestType::kWriteback:
+        response.type = ResponseType::kWritebackAck;
+        break;
+      default:
+        throw std::runtime_error("invalid cache request type");
+    }
+
+    return response;
+  }
   // TODO(A2-CACHE-04): consider OUTPUT, the oldest ready-unsent waiter of
   // each responding MSHR, and the oldest unsent waiter of each ACK_READY
   // writeback; select the minimum (arrival_order, response id). Must not
