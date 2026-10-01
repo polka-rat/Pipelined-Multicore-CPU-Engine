@@ -241,9 +241,26 @@ class CacheController::Impl {
   // currently-eligible, currently-invalid-first ways; fall back to the
   // configured replacement policy. See SPEC.md's three-step victim
   // priority.
-  int SelectVictim(std::uint32_t set) {
-    (void)set;
-    throw std::runtime_error("CacheController::SelectVictim: TODO(A2-CACHE-08)");
+    int SelectVictim(std::uint32_t set) {
+    const auto eligible = EligibleWays(set);
+    int victim = -1;
+
+    for (std::uint32_t way = 0; way < config_.ways; ++way) {
+      if (eligible[way] && !current_lines_[set][way].valid) {
+        victim = static_cast<int>(way);
+        break;
+      }
+    }
+
+    if (victim < 0) {
+      victim = replacement_->SelectVictim(set, eligible);
+    }
+
+    if (victim >= 0) {
+      next_lines_[set][static_cast<std::size_t>(victim)].reserved = true;
+    }
+
+    return victim;
   }
 
   // TODO(A2-CACHE-11): compute the transitive UNSENT overlap closure for a
@@ -383,11 +400,21 @@ class CacheController::Impl {
 
   // TODO(A2-CACHE-06): true iff request's range overlaps any
   // non-ACK_READY (i.e. UNSENT or IN_FLIGHT) writeback entry.
-  bool ConflictsWithLowerIncompleteWriteback(const CacheRequest& request) const {
-    (void)request;
-    throw std::runtime_error(
-        "CacheController::ConflictsWithLowerIncompleteWriteback: "
-        "TODO(A2-CACHE-06)");
+    bool ConflictsWithLowerIncompleteWriteback(
+      const CacheRequest& request) const {
+    for (const auto& writeback : current_writebacks_) {
+      if (!writeback.valid ||
+          writeback.state == OwnerState::kAckReady) {
+        continue;
+      }
+
+      if (RangesOverlap(request.address, request.size,
+                        writeback.address, writeback.size)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   // TODO(A2-CACHE-06/11): select the oldest eligible UNSENT demand MSHR
