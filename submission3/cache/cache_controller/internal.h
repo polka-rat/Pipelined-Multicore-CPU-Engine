@@ -514,9 +514,77 @@ class CacheController::Impl {
   // grants, in which case that writeback must be selected instead. Must
   // not mutate state or allocate an id.
   // Existing helpers: ConflictsWithLowerIncompleteWriteback, FindFreeWriteback.
-  RequestChoice SelectLowerRequest() const {
-    throw std::runtime_error(
-        "CacheController::SelectLowerRequest: TODO(A2-CACHE-06)");
+    RequestChoice SelectLowerRequest() const {
+    RequestChoice result;
+    std::optional<std::size_t> demand;
+    std::optional<std::size_t> writeback;
+
+    for (std::size_t i = 0; i < current_mshrs_.size(); ++i) {
+      const auto& entry = current_mshrs_[i];
+      if (!entry.valid || entry.state != OwnerState::kUnsent) {
+        continue;
+      }
+
+      if (ConflictsWithLowerIncompleteWriteback(entry.lower_request)) {
+        result.demand_blocked_by_writeback = true;
+        continue;
+      }
+
+      if (!demand.has_value()) {
+        demand = i;
+      } else {
+        const auto& previous = current_mshrs_[*demand];
+        if (std::tie(entry.arrival_order, entry.lower_request.id) <
+            std::tie(previous.arrival_order, previous.lower_request.id)) {
+          demand = i;
+        }
+      }
+    }
+
+    for (std::size_t i = 0; i < current_writebacks_.size(); ++i) {
+      const auto& entry = current_writebacks_[i];
+      if (!entry.valid || entry.state != OwnerState::kUnsent) {
+        continue;
+      }
+
+      if (!writeback.has_value()) {
+        writeback = i;
+      } else {
+        const auto& previous = current_writebacks_[*writeback];
+        if (std::tie(entry.arrival_order, entry.lower_request.id) <
+            std::tie(previous.arrival_order, previous.lower_request.id)) {
+          writeback = i;
+        }
+      }
+    }
+
+    result.oldest_eligible_writeback = writeback;
+
+    if (!demand.has_value() && !writeback.has_value()) {
+      return result;
+    }
+
+    const bool select_writeback =
+        writeback.has_value() &&
+        (!demand.has_value() ||
+         FindFreeWriteback() < 0 ||
+         current_writebacks_[*writeback].demand_bypasses >= 8);
+
+    if (select_writeback) {
+      const auto& entry = current_writebacks_[*writeback];
+      result.owner = RequestOwner::kWriteback;
+      result.entry = *writeback;
+      result.request = entry.lower_request;
+      result.arrival_order = entry.arrival_order;
+    } else {
+      const auto& entry = current_mshrs_[*demand];
+      result.owner = RequestOwner::kMshr;
+      result.entry = *demand;
+      result.request = entry.lower_request;
+      result.arrival_order = entry.arrival_order;
+    }
+
+    return result;
   }
 
   // TODO(A2-CACHE-04): available (already implemented, call from here):
