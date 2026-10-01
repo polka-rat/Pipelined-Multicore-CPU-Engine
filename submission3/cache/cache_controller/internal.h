@@ -394,8 +394,97 @@ class CacheController::Impl {
   // each responding MSHR, and the oldest unsent waiter of each ACK_READY
   // writeback; select the minimum (arrival_order, response id). Must not
   // mutate state.
-  ResponseChoice SelectResponse() const {
-    throw std::runtime_error("CacheController::SelectResponse: TODO(A2-CACHE-04)");
+   ResponseChoice SelectResponse() const {
+    ResponseChoice best;
+
+    auto consider = [&](const ResponseChoice& candidate) {
+      if (best.owner == ResponseOwner::kNone ||
+          ResponseLess(candidate, best)) {
+        best = candidate;
+      }
+    };
+
+    if (current_output_.valid) {
+      ResponseChoice candidate;
+      candidate.owner = ResponseOwner::kOutput;
+      candidate.response = current_output_.response;
+      candidate.arrival_order = current_output_.arrival_order;
+      consider(candidate);
+    }
+
+    for (std::size_t i = 0; i < current_mshrs_.size(); ++i) {
+      const auto& mshr = current_mshrs_[i];
+      if (!mshr.valid || mshr.state != OwnerState::kResponding) {
+        continue;
+      }
+
+      for (std::size_t j = 0; j < mshr.waiters.size(); ++j) {
+        const auto& waiter = mshr.waiters[j];
+        if (!waiter.response_ready || waiter.response_sent) {
+          continue;
+        }
+
+        ResponseChoice candidate;
+        candidate.owner = ResponseOwner::kMshr;
+        candidate.entry = i;
+        candidate.waiter = j;
+        candidate.arrival_order = waiter.arrival_order;
+        candidate.response.id = waiter.request_id;
+        candidate.response.origin_id = waiter.origin_id;
+        candidate.response.sequence = waiter.sequence;
+        candidate.response.generation = waiter.generation;
+        candidate.response.address = waiter.address;
+        candidate.response.size = waiter.size;
+
+        switch (waiter.type) {
+          case RequestType::kRead:
+            candidate.response.type = ResponseType::kReadData;
+            candidate.response.data = waiter.response_data;
+            break;
+          case RequestType::kWrite:
+            candidate.response.type = ResponseType::kWriteAck;
+            break;
+          case RequestType::kWriteback:
+            candidate.response.type = ResponseType::kWritebackAck;
+            break;
+          default:
+            throw std::runtime_error("invalid MSHR waiter type");
+        }
+
+        consider(candidate);
+      }
+    }
+
+    for (std::size_t i = 0; i < current_writebacks_.size(); ++i) {
+      const auto& writeback = current_writebacks_[i];
+      if (!writeback.valid ||
+          writeback.state != OwnerState::kAckReady) {
+        continue;
+      }
+
+      for (std::size_t j = 0; j < writeback.waiters.size(); ++j) {
+        const auto& waiter = writeback.waiters[j];
+        if (waiter.response_sent) {
+          continue;
+        }
+
+        ResponseChoice candidate;
+        candidate.owner = ResponseOwner::kWriteback;
+        candidate.entry = i;
+        candidate.waiter = j;
+        candidate.arrival_order = waiter.arrival_order;
+        candidate.response.id = waiter.request_id;
+        candidate.response.origin_id = waiter.origin_id;
+        candidate.response.sequence = waiter.sequence;
+        candidate.response.generation = waiter.generation;
+        candidate.response.address = waiter.address;
+        candidate.response.size = waiter.size;
+        candidate.response.type = ResponseType::kWritebackAck;
+        consider(candidate);
+      }
+    }
+
+    return best;
   }
 
   // TODO(A2-CACHE-06): true iff request's range overlaps any
