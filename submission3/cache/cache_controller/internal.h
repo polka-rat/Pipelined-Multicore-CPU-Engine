@@ -613,9 +613,51 @@ class CacheController::Impl {
   // free an MSHR (unpinning its way) or writeback entry once every one of
   // its waiters has been sent.
   // Existing helpers: SelectResponse, ResponseIntent.
-  void ApplyResponseGrant() {
-    throw std::runtime_error(
-        "CacheController::ApplyResponseGrant: TODO(A2-CACHE-12)");
+   void ApplyResponseGrant() {
+    const auto choice = SelectResponse();
+
+    switch (choice.owner) {
+      case ResponseOwner::kOutput:
+        next_output_ = OutputEntry{};
+        return;
+
+      case ResponseOwner::kMshr: {
+        auto& mshr = next_mshrs_[choice.entry];
+        mshr.waiters[choice.waiter].response_sent = true;
+
+        const bool all_sent = std::all_of(
+            mshr.waiters.begin(), mshr.waiters.end(),
+            [](const MshrWaiter& waiter) {
+              return waiter.response_sent;
+            });
+
+        if (all_sent) {
+          next_lines_[mshr.set][mshr.reserved_way].reserved = false;
+          mshr = MshrEntry{};
+        }
+        return;
+      }
+
+      case ResponseOwner::kWriteback: {
+        auto& writeback = next_writebacks_[choice.entry];
+        writeback.waiters[choice.waiter].response_sent = true;
+
+        const bool all_sent = std::all_of(
+            writeback.waiters.begin(), writeback.waiters.end(),
+            [](const WritebackAckWaiter& waiter) {
+              return waiter.response_sent;
+            });
+
+        if (all_sent) {
+          writeback = WritebackEntry{};
+        }
+        return;
+      }
+
+      case ResponseOwner::kNone:
+        throw std::runtime_error(
+            "response grant with no response candidate");
+    }
   }
 
   void ValidateEcho(const CacheResponse& response,
@@ -724,9 +766,35 @@ class CacheController::Impl {
   // IN_FLIGHT. Granting a demand bumps the oldest eligible writeback's
   // demand_bypasses (capped at 8); granting a writeback resets
   // demand_bypasses to 0 and counts writebacks_sent.
-  void ApplyLowerRequestGrant() {
-    throw std::runtime_error(
-        "CacheController::ApplyLowerRequestGrant: TODO(A2-CACHE-12)");
+   void ApplyLowerRequestGrant() {
+    const auto choice = SelectLowerRequest();
+
+    switch (choice.owner) {
+      case RequestOwner::kMshr: {
+        next_mshrs_[choice.entry].state = OwnerState::kInFlight;
+
+        if (choice.oldest_eligible_writeback.has_value()) {
+          auto& writeback =
+              next_writebacks_[*choice.oldest_eligible_writeback];
+          if (writeback.demand_bypasses < 8) {
+            ++writeback.demand_bypasses;
+          }
+        }
+        return;
+      }
+
+      case RequestOwner::kWriteback: {
+        auto& writeback = next_writebacks_[choice.entry];
+        writeback.state = OwnerState::kInFlight;
+        writeback.demand_bypasses = 0;
+        ++next_stats_.writebacks_sent;
+        return;
+      }
+
+      case RequestOwner::kNone:
+        throw std::runtime_error(
+            "lower request grant with no candidate");
+    }
   }
 
   // TODO(A2-CACHE-12): the single mutating call per cycle. Apply only the
