@@ -915,10 +915,110 @@ class CacheController::Impl {
   // writeback ack -- transition ACK_READY (or free immediately if it had
   // no waiters).
   // Existing helpers: FindMshrByLowerId, FindWritebackByLowerId, ValidateEcho.
-  void ApplyLowerResponse(const CacheResponse& response) {
-    (void)response;
-    throw std::runtime_error(
-        "CacheController::ApplyLowerResponse: TODO(A2-CACHE-09)");
+   void ApplyLowerResponse(const CacheResponse& response) {
+    ValidateResponsePayload(response);
+
+    const int mshr_index = FindMshrByLowerId(response.id);
+    const int writeback_index = FindWritebackByLowerId(response.id);
+
+    if (mshr_index >= 0 && writeback_index >= 0) {
+      throw std::runtime_error("duplicate lower response owner");
+    }
+
+    if (mshr_index >= 0) {
+      const auto& current = current_mshrs_[mshr_index];
+
+      if (current.state != OwnerState::kInFlight) {
+        throw std::runtime_error("fill owner is not in flight");
+      }
+
+      ValidateEcho(response, current.lower_request,
+                   ResponseType::kReadData);
+
+      if (response.size != config_.line_size ||
+          response.address != current.block_address) {
+        throw std::runtime_error("fill is not a complete local line");
+      }
+
+      auto& mshr = next_mshrs_[mshr_index];
+      auto& line = next_lines_[mshr.set][mshr.reserved_way];
+
+      CacheLine filled;
+      filled.valid = true;
+      filled.reserved = true;
+      filled.tag = mshr.tag;
+      filled.data = response.data;
+
+      auto waiters = mshr.waiters;
+      std::sort(
+          waiters.begin(), waiters.end(),
+          [](const MshrWaiter& a, const MshrWaiter& b) {
+            return std::tie(a.arrival_order, a.request_id) <
+                   std::tie(b.arrival_order, b.request_id);
+          });
+
+      for (auto& waiter : waiters) {
+        if (waiter.address < mshr.block_address ||
+            waiter.size == 0 ||
+            static_cast<std::uint64_t>(
+                waiter.address - mshr.block_address) +
+                    waiter.size >
+                filled.data.size()) {
+          throw std::runtime_error("MSHR waiter exceeds fill range");
+        }
+
+        const std::size_t offset =
+            waiter.address - mshr.block_address;
+
+        if (waiter.type == RequestType::kRead) {
+          waiter.response_data.assign(
+              filled.data.begin() + offset,
+              filled.data.begin() + offset + waiter.size);
+        } else if (waiter.type == RequestType::kWrite &&
+                   waiter.data.size() == waiter.size) {
+          std::copy(
+              waiter.data.begin(), waiter.data.end(),
+              filled.data.begin() + offset);
+          filled.dirty = true;
+          waiter.response_data.clear();
+        } else {
+          throw std::runtime_error(
+              "invalid fill waiter type or payload");
+        }
+
+        waiter.response_ready = true;
+        waiter.response_sent = false;
+      }
+
+      replacement_->OnInsert(mshr.set, mshr.reserved_way);
+      line = std::move(filled);
+      mshr.waiters = std::move(waiters);
+      mshr.state = OwnerState::kResponding;
+      ++next_stats_.fills;
+      return;
+    }
+
+    if (writeback_index >= 0) {
+      const auto& current = current_writebacks_[writeback_index];
+
+      if (current.state != OwnerState::kInFlight) {
+        throw std::runtime_error(
+            "writeback ack owner is not in flight");
+      }
+
+      ValidateEcho(response, current.lower_request,
+                   ResponseType::kWritebackAck);
+
+      auto& entry = next_writebacks_[writeback_index];
+      if (entry.waiters.empty()) {
+        entry = WritebackEntry{};
+      } else {
+        entry.state = OwnerState::kAckReady;
+      }
+      return;
+    }
+
+    throw std::runtime_error("lower response has no owner");
   }
 
   // TODO(A2-CACHE-10/11): insert a new writeback entry, or merge into the
@@ -926,21 +1026,109 @@ class CacheController::Impl {
   // -- oldest entry/ID survives, bytes applied in entry-age order with the
   // newly-accepted bytes winning any overlap (this call's data is newest),
   // combined waiters bounded and sorted by (arrival_order, request id).
-  void InsertWriteback(std::uint32_t address,
-                       const std::vector<std::uint8_t>& data,
-                       std::uint64_t arrival_order,
-                       const std::optional<WritebackAckWaiter>& waiter,
-                       int granted_writeback = -1,
-                       std::optional<std::uint64_t> preallocated_id =
-                           std::nullopt) {
-    (void)address;
-    (void)data;
-    (void)arrival_order;
-    (void)waiter;
-    (void)granted_writeback;
-    (void)preallocated_id;
-    throw std::runtime_error(
-        "CacheController::InsertWriteback: TODO(A2-CACHE-11)");
+    void InsertWriteback(
+      std::uint32_t address,
+      const std::vector<std::uint8_t>& data,
+      std::uint64_t arrival_order,
+      const std::optional<WritebackAckWaiter>& waiter,
+      int granted_writeback = -1,
+      std::optional<std::uint64_t> preallocated_id = std::nullopt) {
+    if (data.empty() ||
+        data.size() > std::numeric_limits<std::uint32_t>::max()) {
+      throw std::runtime_error("invalid writeback payload size");
+    }
+
+    const auto size = static_cast<std::uint32_t>(data.size());
+    if (!RangeFitsLine(address, size, config_.line_size)) {
+      throw std::runtime_error("writeback crosses a local line");
+    }
+
+    const auto plan = PlanWriteback(
+        address, size, waiter ? 1 : 0, granted_writeback);
+    if (!plan.allowed) {
+      throw std::runtime_error(
+          "writeback inserted without available resources");
+    }
+
+    const bool merging = !plan.merge_entries.empty();
+
+    WritebackEntry result;
+    result.valid = true;
+    result.state = OwnerState::kUnsent;
+    result.arrival_order = arrival_order;
+
+    std::uint64_t begin = address;
+    std::uint64_t end = CheckedRangeEnd(address, size);
+
+    for (const auto i : plan.merge_entries) {
+      const auto& entry = current_writebacks_[i];
+      begin = std::min(
+          begin, static_cast<std::uint64_t>(entry.address));
+      end = std::max(
+          end, static_cast<std::uint64_t>(entry.address) + entry.size);
+    }
+
+    result.address = static_cast<std::uint32_t>(begin);
+    result.size = static_cast<std::uint32_t>(end - begin);
+    result.data.assign(result.size, 0);
+
+    if (merging) {
+      const auto& survivor = current_writebacks_[plan.survivor];
+      result.arrival_order = survivor.arrival_order;
+      result.demand_bypasses = survivor.demand_bypasses;
+      result.lower_request.id = survivor.lower_request.id;
+
+      for (const auto i : plan.merge_entries) {
+        const auto& entry = current_writebacks_[i];
+        std::copy(
+            entry.data.begin(), entry.data.end(),
+            result.data.begin() + entry.address - result.address);
+        result.waiters.insert(
+            result.waiters.end(),
+            entry.waiters.begin(), entry.waiters.end());
+      }
+    } else {
+      result.lower_request.id =
+          preallocated_id.has_value()
+              ? *preallocated_id
+              : transaction_ids_->Reserve(SourceForRole(role_));
+    }
+
+    std::copy(
+        data.begin(), data.end(),
+        result.data.begin() + address - result.address);
+
+    if (waiter) {
+      result.waiters.push_back(*waiter);
+    }
+
+    std::sort(
+        result.waiters.begin(), result.waiters.end(),
+        [](const WritebackAckWaiter& a,
+           const WritebackAckWaiter& b) {
+          return std::tie(a.arrival_order, a.request_id) <
+                 std::tie(b.arrival_order, b.request_id);
+        });
+
+    result.lower_request.origin_id = kNoOriginId;
+    result.lower_request.sequence = kNoSequence;
+    result.lower_request.generation = 0;
+    result.lower_request.address = result.address;
+    result.lower_request.size = result.size;
+    result.lower_request.type = RequestType::kWriteback;
+    result.lower_request.data = result.data;
+
+    for (const auto i : plan.merge_entries) {
+      next_writebacks_[i] = WritebackEntry{};
+    }
+
+    next_writebacks_[plan.survivor] = std::move(result);
+
+    if (merging) {
+      ++next_stats_.writeback_merges;
+    } else {
+      ++next_stats_.writebacks_generated;
+    }
   }
 
   // TODO(A2-CACHE-07): apply a committed hit -- write store/writeback bytes
