@@ -202,9 +202,10 @@ class TreePlru final : public ReplacementPolicy {
     // throw std::runtime_error("TreePlru::PeekVictim: TODO(A2--REPL-01)");
   }
 
-  std::vector<std::uint32_t> DebugState(std::uint32_t set) const override {
-    (void)set;
-    throw std::runtime_error("TreePlru::DebugState: TODO(A2-REPL-01)");
+    std::vector<std::uint32_t> DebugState(std::uint32_t set) const override {
+    CheckCoordinates(set, 0, sets_, ways_);
+    return std::vector<std::uint32_t>(
+        current_[set].begin(), current_[set].end());
   }
 
   // Worked example: the general current/next commit discipline (compare
