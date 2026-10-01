@@ -106,10 +106,18 @@ class CacheController::Impl {
   // TODO(A2-CACHE-02): local address mapping using this controller's
   // line_size and sets. Return block base, set, tag, offset. See SPEC.md/
   // ABI.md for the exact formula.
-  AddressFields MapAddress(std::uint32_t address) const {
-    (void)address;
-    throw std::runtime_error("CacheController::MapAddress: TODO(A2-CACHE-02)");
-  }
+ AddressFields MapAddress(std::uint32_t address) const {
+  AddressFields fields;
+
+  fields.offset = address % config_.line_size;
+  fields.block = address - fields.offset;
+
+  const std::uint32_t block_number = address / config_.line_size;
+  fields.set = block_number % config_.sets;
+  fields.tag = block_number / config_.sets;
+
+  return fields;
+}
 
   void ValidateInbound(const CacheRequest& request) const {
     ValidateRequestPayload(request);
