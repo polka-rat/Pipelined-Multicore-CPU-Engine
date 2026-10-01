@@ -433,17 +433,23 @@ class CacheController::Impl {
   // TODO(A2-CACHE-04): available (already implemented, call from here):
   // SelectResponse() (above) does the candidate selection; this method
   // just extracts its response if any.
-  std::optional<CacheResponse> ResponseIntent() const {
-    throw std::runtime_error(
-        "CacheController::ResponseIntent: TODO(A2-CACHE-04)");
+   std::optional<CacheResponse> ResponseIntent() const {
+    const auto choice = SelectResponse();
+    if (choice.owner == ResponseOwner::kNone) {
+      return std::nullopt;
+    }
+    return choice.response;
   }
 
   // TODO(A2-CACHE-06): available (already implemented, call from here):
   // SelectLowerRequest() (above) does the candidate selection; this
   // method just extracts its request if any.
-  std::optional<CacheRequest> LowerRequestIntent() const {
-    throw std::runtime_error(
-        "CacheController::LowerRequestIntent: TODO(A2-CACHE-06)");
+   std::optional<CacheRequest> LowerRequestIntent() const {
+    const auto choice = SelectLowerRequest();
+    if (choice.owner == RequestOwner::kNone) {
+      return std::nullopt;
+    }
+    return choice.request;
   }
 
   // TODO(A2-CACHE-12): mark the candidate ResponseIntent() offered as sent;
