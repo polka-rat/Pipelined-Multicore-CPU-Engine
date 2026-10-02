@@ -67,7 +67,11 @@ void Core::Memory(){
                                    executionResult.memory_write,
                                    executionResult.store_value)) {
                                     consume_output_[static_cast<std::size_t>(ExecutionUnitKind::kAgu)] = true;
-                                   }
+        } else if (!machine_->PendingDataHasCapacity()) {
+            machine_->RecordCpuStall(CpuStallReason::kPendingDataFull);
+        } else {
+            machine_->RecordCpuStall(CpuStallReason::kDcacheInput);
+        } 
 
         // throw std::runtime_error("Core::Memory: TODO(A2--DESIGN-05)"); 
     }
@@ -185,7 +189,7 @@ void Core::Decode(){
         std::optional<int> resultBoundary;
         if (unit != ExecutionUnitKind::kAgu) {
             resultBoundary = ResultBoundary(current_boundary_+1, pipelines_[unitIndex]->config().latency);
-            if (machine_->NormalCompletionSlotAvailable(*resultBoundary)) {
+            if (!machine_->NormalCompletionSlotAvailable(*resultBoundary)) {
                 machine_->RecordCpuStall(CpuStallReason::kExecutionCompletionSlot);
                 for (int i = 0; i < 7; i++) {
                     pipelines_[i]->Operate(current_boundary_, std::nullopt, consume_output_[i]);
@@ -242,7 +246,8 @@ void Core::Fetch(){
         snapshot.pc=pc_; 
 
         // Check if fetch is stopped due to pending CONTROL resolution
-        if (fetch_stopped_) {
+        if (fetch_stopped_ || control_recognized_this_cycle_) {
+            machine_->RecordCpuStall(CpuStallReason::kControlDisabled);
             next_pc_ = pc_;
             next_if_id_ = (if_id_consumed_) ? FrontendLatch():if_id_;
             return;
