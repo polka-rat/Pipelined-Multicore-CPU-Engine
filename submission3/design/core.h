@@ -32,6 +32,7 @@ class Core {
   BranchPredictionSystem* branch_prediction_; 
   SpeculationController* speculation_control_;
   std::uint32_t pc_=0,next_pc_=0; bool fetch_stopped_=false,next_fetch_stopped_=false;
+  bool fetch_in_flight_=false,next_fetch_in_flight_=false;
   FrontendLatch if_id_,next_if_id_; std::uint64_t current_boundary_=0;
   std::array<bool,7> consume_output_={}; bool if_id_consumed_=false; bool control_recognized_this_cycle_=false; bool pipelines_operated_=false; bool cycle_begun_=false;
   StageSnapshot snapshots_[5];
