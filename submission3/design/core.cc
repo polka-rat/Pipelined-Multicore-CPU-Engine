@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 #include "design/core.h"
 #include "design/instruction_helpers.h"
 #include "branch_prediction/internal.h"
@@ -402,7 +401,7 @@ void Core::Fetch(){
 void Core::BeginCycle(){ if(cycle_begun_) throw std::runtime_error("CPU logic cycle initialized twice"); next_pc_=pc_; next_fetch_stopped_=fetch_stopped_; next_fetch_in_flight_=fetch_in_flight_; next_if_id_=if_id_; consume_output_.fill(false); if_id_consumed_=false; control_recognized_this_cycle_=false; redirect_this_cycle_=false; pipelines_operated_=false; cycle_begun_=true; }
 StageSnapshot Core::SnapshotFor(const Instruction& instruction){ StageSnapshot snapshot; snapshot.valid=true; snapshot.pc=instruction.pc; snapshot.opcode=OpcodeName(instruction.opcode); return snapshot; }
 }
-=======
+#if 0
 #include "design/core.h"
 #include "design/instruction_helpers.h"
 #include "branch_prediction/internal.h"
@@ -714,4 +713,4 @@ void Core::Fetch(){
 void Core::BeginCycle(){ if(cycle_begun_) throw std::runtime_error("CPU logic cycle initialized twice"); next_pc_=pc_; next_fetch_stopped_=fetch_stopped_; next_fetch_in_flight_=fetch_in_flight_; next_if_id_=if_id_; consume_output_.fill(false); if_id_consumed_=false; control_recognized_this_cycle_=false; pipelines_operated_=false; cycle_begun_=true; }
 StageSnapshot Core::SnapshotFor(const Instruction& instruction){ StageSnapshot snapshot; snapshot.valid=true; snapshot.pc=instruction.pc; snapshot.opcode=OpcodeName(instruction.opcode); return snapshot; }
 }
->>>>>>> 610485bf424c8abc3dd6e50c34515b54bd276dd4
+#endif
