@@ -22,8 +22,8 @@ Core::Core(Machine* machine,
         if(pipelines_[i] == nullptr || pipelines_[i]->kind()!=static_cast<ExecutionUnitKind>(i)) 
             throw std::runtime_error("CPU core execution-unit registration mismatch");
 }
-void Core::ResetRegister(RegisterKind kind){ if(kind!=RegisterKind::kPc)return; pc_=machine_->EntryPoint(); next_pc_=pc_; fetch_stopped_=false; next_fetch_stopped_=false; if_id_=FrontendLatch(); next_if_id_=FrontendLatch(); current_boundary_=0; cycle_begun_=false; for(auto& s:snapshots_)s=StageSnapshot(); }
-void Core::CommitRegister(RegisterKind kind){ if(kind!=RegisterKind::kPc)return; if(!cycle_begun_||!pipelines_operated_) throw std::runtime_error("CPU core commit without a complete operate pass"); pc_=next_pc_; fetch_stopped_=next_fetch_stopped_; if_id_=next_if_id_; if(current_boundary_==std::numeric_limits<std::uint64_t>::max()) throw std::runtime_error("CPU boundary counter overflow"); ++current_boundary_; cycle_begun_=false; }
+void Core::ResetRegister(RegisterKind kind){ if(kind!=RegisterKind::kPc)return; pc_=machine_->EntryPoint(); next_pc_=pc_; fetch_stopped_=false; next_fetch_stopped_=false; fetch_in_flight_=false; next_fetch_in_flight_=false; if_id_=FrontendLatch(); next_if_id_=FrontendLatch(); current_boundary_=0; cycle_begun_=false; for(auto& s:snapshots_)s=StageSnapshot(); }
+void Core::CommitRegister(RegisterKind kind){ if(kind!=RegisterKind::kPc)return; if(!cycle_begun_||!pipelines_operated_) throw std::runtime_error("CPU core commit without a complete operate pass"); pc_=next_pc_; fetch_stopped_=next_fetch_stopped_; fetch_in_flight_=next_fetch_in_flight_; if_id_=next_if_id_; if(current_boundary_==std::numeric_limits<std::uint64_t>::max()) throw std::runtime_error("CPU boundary counter overflow"); ++current_boundary_; cycle_begun_=false; }
 std::string Core::RegisterSnapshot(RegisterKind kind) const { std::ostringstream output; switch(kind){ case RegisterKind::kPc: output<<"pc=0x"<<std::hex<<pc_<<std::dec<<" stopped="<<(fetch_stopped_?1:0); return output.str(); case RegisterKind::kIfId: if(!if_id_.valid)return "EMPTY"; output<<OpcodeName(if_id_.fetched.instruction.opcode)<<"@0x"<<std::hex<<if_id_.fetched.instruction.pc<<std::dec<<"#"<<if_id_.fetched.sequence; return output.str(); case RegisterKind::kIdEx:return "EXECUTION_PIPELINES"; case RegisterKind::kExMem:return "AGU_HANDOFF"; case RegisterKind::kMemWb:return "COMPLETION_QUEUE";} return "EMPTY"; }
 void Core::ResetStage(StageRole role){ snapshots_[static_cast<std::size_t>(role)]=StageSnapshot(); }
 StageSnapshot Core::Snapshot(StageRole role) const{return snapshots_[static_cast<std::size_t>(role)];}
@@ -94,6 +94,7 @@ void Core::Execute(){
                 if (executionResult.redirect) {
                     next_pc_ = executionResult.next_pc;
                     machine_->InvalidateFetchesAfter(executionResult.sequence);
+                    next_fetch_in_flight_ = false;
                     next_fetch_stopped_ = false;
                     control_recognized_this_cycle_ = true;
                 } else if (executionResult.halt) {
@@ -275,6 +276,7 @@ void Core::Fetch(){
             if (peekFetchedResult) {
                 // Received an instruction from L1I
                 machine_->ConsumeFetched();
+                next_fetch_in_flight_ = false;
                 next_if_id_ = FrontendLatch();
                 next_if_id_.valid = true;
                 next_if_id_.fetched = fetchedInstruction;
@@ -284,19 +286,26 @@ void Core::Fetch(){
                 snapshot.pc = fetchedInstruction.instruction.pc;
                 snapshot.opcode = OpcodeName(fetchedInstruction.instruction.opcode);
 
-            } else {
-                // Still waiting for an instruction from L1I
-                next_pc_ = pc_;
-                next_if_id_ = FrontendLatch();
-            }
-        } else {
-            // Stalled
-            next_pc_ = pc_;
-            next_if_id_ = if_id_;
-        }
+            } 
+            // else {
+            //     // Issue at most one request for this PC.  Reissuing while a
+            //     // miss is pending fills the finite fetch queue with duplicate
+            //     // requests and lets the frontend run past control flow.
+            //     if (!fetch_in_flight_ && machine_->TryIssueFetch(pc_)) {
+            //         next_fetch_in_flight_ = true;
+            //     }
+            //     next_pc_ = pc_;
+            //     next_if_id_ = FrontendLatch();
+            // }
+        } 
+        // else {
+        //     // Stalled
+        //     next_pc_ = pc_;
+        //     next_if_id_ = if_id_;
+        // }
 
         // throw std::runtime_error("Core::Fetch: TODO(A2--DESIGN-02)"); 
     }
-void Core::BeginCycle(){ if(cycle_begun_) throw std::runtime_error("CPU logic cycle initialized twice"); next_pc_=pc_; next_fetch_stopped_=fetch_stopped_; next_if_id_=if_id_; consume_output_.fill(false); if_id_consumed_=false; control_recognized_this_cycle_=false; pipelines_operated_=false; cycle_begun_=true; }
+void Core::BeginCycle(){ if(cycle_begun_) throw std::runtime_error("CPU logic cycle initialized twice"); next_pc_=pc_; next_fetch_stopped_=fetch_stopped_; next_fetch_in_flight_=fetch_in_flight_; next_if_id_=if_id_; consume_output_.fill(false); if_id_consumed_=false; control_recognized_this_cycle_=false; pipelines_operated_=false; cycle_begun_=true; }
 StageSnapshot Core::SnapshotFor(const Instruction& instruction){ StageSnapshot snapshot; snapshot.valid=true; snapshot.pc=instruction.pc; snapshot.opcode=OpcodeName(instruction.opcode); return snapshot; }
 }

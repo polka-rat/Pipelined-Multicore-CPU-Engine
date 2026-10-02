@@ -53,13 +53,13 @@ namespace pipesim {
                     return result;
                 }else if(operation.instruction.opcode==Opcode::kBne){
                     result.redirect=(operation.lhs!=operation.rhs);
-                    // result.next_pc=result.redirect?operation.instruction.pc+4+static_cast<std::uint32_t>(operation.instruction.immediate):operation.instruction.pc+4;
+                    // result.next_pc=result.redirect?static_cast<std::uint32_t>(operation.instruction.immediate):operation.instruction.pc+4;
                     result.next_pc=result.redirect?static_cast<std::uint32_t>(operation.instruction.immediate):operation.instruction.pc+4;
                     return result;
                 }
                 else if(operation.instruction.opcode==Opcode::kJ){
                     result.redirect=true;
-                    // result.next_pc=operation.instruction.pc+4+static_cast<std::uint32_t>(operation.instruction.immediate);
+                    // result.next_pc=static_cast<std::uint32_t>(operation.instruction.immediate);
                     result.next_pc=static_cast<std::uint32_t>(operation.instruction.immediate);
                     return result;
                 }
