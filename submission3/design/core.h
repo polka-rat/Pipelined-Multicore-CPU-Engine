@@ -10,7 +10,7 @@
 #include <sstream>
 #include <string>
 namespace pipesim::design_internal {
-struct FrontendLatch { bool valid=false; FetchedInstruction fetched; bool decoded=false; bool control_recognized=false; DecodeResult decode; };
+struct FrontendLatch { bool valid=false; FetchedInstruction fetched; bool decoded=false; bool prediction_observed=false; bool checkpoint_added=false; bool control_recognized=false; DecodeResult decode; };
 enum class RegisterKind { kPc, kIfId, kIdEx, kExMem, kMemWb };
 class Core {
  public:
@@ -34,7 +34,7 @@ class Core {
   std::uint32_t pc_=0,next_pc_=0; bool fetch_stopped_=false,next_fetch_stopped_=false;
   bool fetch_in_flight_=false,next_fetch_in_flight_=false;
   FrontendLatch if_id_,next_if_id_; std::uint64_t current_boundary_=0;
-  std::array<bool,7> consume_output_={}; bool if_id_consumed_=false; bool control_recognized_this_cycle_=false; bool pipelines_operated_=false; bool cycle_begun_=false;
+  std::array<bool,7> consume_output_={}; bool if_id_consumed_=false; bool control_recognized_this_cycle_=false; bool redirect_this_cycle_=false; std::uint64_t checkpointed_sequence_=std::numeric_limits<std::uint64_t>::max(); bool pipelines_operated_=false; bool cycle_begun_=false;
   StageSnapshot snapshots_[5];
 };
 }
