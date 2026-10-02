@@ -490,6 +490,11 @@ void Core::Decode(){
                                                  report.data_requests);
                 next_fetch_in_flight_ = false;
                 next_if_id_ = FrontendLatch();
+                for (int i = 0; i < 7; ++i) {
+                    pipelines_[i]->Operate(current_boundary_, std::nullopt,
+                                           consume_output_[i]);
+                }
+                pipelines_operated_ = true;
                 return;
             }
         }
@@ -612,6 +617,10 @@ void Core::Decode(){
             return;
         }
 
+        if (speculation_control_->IsSpeculative(fetchedInstruction.sequence)) {
+            branch_prediction_->RecordSpeculativeDispatch();
+        }
+
         next_if_id_ = FrontendLatch();
         if_id_consumed_ = true;
 
@@ -682,7 +691,6 @@ void Core::Fetch(){
                     } else {
                     }
                 }
-                next_pc_ = pc_;
                 next_if_id_ = FrontendLatch();
             }
         } else {
