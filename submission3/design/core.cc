@@ -67,11 +67,12 @@ void Core::Memory(){
                                    executionResult.memory_write,
                                    executionResult.store_value)) {
                                     consume_output_[static_cast<std::size_t>(ExecutionUnitKind::kAgu)] = true;
-        } else if (!machine_->PendingDataHasCapacity()) {
-            machine_->RecordCpuStall(CpuStallReason::kPendingDataFull);
-        } else {
-            machine_->RecordCpuStall(CpuStallReason::kDcacheInput);
         } 
+        // else if (!machine_->PendingDataHasCapacity()) {
+        //     machine_->RecordCpuStall(CpuStallReason::kPendingDataFull);
+        // } else {
+        //     machine_->RecordCpuStall(CpuStallReason::kDcacheInput);
+        // } 
 
         // throw std::runtime_error("Core::Memory: TODO(A2--DESIGN-05)"); 
     }
