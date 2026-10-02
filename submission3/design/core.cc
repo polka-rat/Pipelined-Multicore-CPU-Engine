@@ -67,12 +67,11 @@ void Core::Memory(){
                                    executionResult.memory_write,
                                    executionResult.store_value)) {
                                     consume_output_[static_cast<std::size_t>(ExecutionUnitKind::kAgu)] = true;
+        } else if (!machine_->PendingDataHasCapacity()) {
+            machine_->RecordCpuStall(CpuStallReason::kPendingDataFull);
+        } else {
+            machine_->RecordCpuStall(CpuStallReason::kDcacheInput);
         } 
-        // else if (!machine_->PendingDataHasCapacity()) {
-        //     machine_->RecordCpuStall(CpuStallReason::kPendingDataFull);
-        // } else {
-        //     machine_->RecordCpuStall(CpuStallReason::kDcacheInput);
-        // } 
 
         // throw std::runtime_error("Core::Memory: TODO(A2--DESIGN-05)"); 
     }
@@ -141,6 +140,8 @@ void Core::Decode(){
 
         if (!if_id_.decoded) {
             decodeResult = main_control_->Decode(instruction);
+            next_if_id_.decoded = true;
+            next_if_id_.decode = decodeResult;
         } else {
             decodeResult = if_id_.decode;
         }
@@ -204,18 +205,19 @@ void Core::Decode(){
         executionOperation.sequence = fetchedInstruction.sequence;
         executionOperation.instruction = instruction;
         executionOperation.dispatch_boundary = current_boundary_+1;
+        executionOperation.fetch_cycle = fetchedInstruction.fetch_cycle;
+        executionOperation.predictions = fetchedInstruction.predictions;
 
         executionOperation.lhs = machine_->ReadRegister(instruction.rs1);
-        if (ReadsRs2(instruction.opcode)) {
+        if (instruction.opcode == Opcode::kSw) {
+            executionOperation.rhs = static_cast<std::uint32_t>(instruction.immediate);
+            executionOperation.store_value = machine_->ReadRegister(instruction.rs2);
+        } else if (ReadsRs2(instruction.opcode)) {
             executionOperation.rhs = machine_->ReadRegister(instruction.rs2);
         } else {
             executionOperation.rhs = static_cast<std::uint32_t>(instruction.immediate);
         }
 
-        if (instruction.opcode == Opcode::kSw) {
-            executionOperation.store_value =
-            machine_->ReadRegister(instruction.rs2);
-        }
         
         if (!machine_->TryAllocateCompletion(fetchedInstruction.sequence, instruction, decodeResult.writes_register, resultBoundary)) {
             machine_->RecordCpuStall(CpuStallReason::kExecutionCompletionSlot);
@@ -249,13 +251,20 @@ void Core::Fetch(){
         // Check if fetch is stopped due to pending CONTROL resolution
         if (fetch_stopped_ || control_recognized_this_cycle_) {
             machine_->RecordCpuStall(CpuStallReason::kControlDisabled);
-            next_pc_ = pc_;
-            next_if_id_ = (if_id_consumed_) ? FrontendLatch():if_id_;
+            // next_pc_ = pc_;
+            // next_if_id_ = (if_id_consumed_) ? FrontendLatch():if_id_;
             return;
         } 
         // If Fetch is running, run TryIssueFetch()
-        else {
-            machine_->TryIssueFetch(pc_);
+        // else {
+        //     machine_->TryIssueFetch(pc_);
+        // }
+        if (machine_->TryIssueFetch(pc_)) {
+            next_pc_ = pc_ + 4;
+        } else if (!machine_->FetchQueueHasCapacity()) {
+            machine_->RecordCpuStall(CpuStallReason::kFetchQueueFull);
+        } else if (!machine_->FetchRequestLinkCanAccept()) {
+            machine_->RecordCpuStall(CpuStallReason::kIcacheInput);
         }
 
         bool checkIfId = (!if_id_.valid) || (if_id_consumed_);
@@ -269,7 +278,7 @@ void Core::Fetch(){
                 next_if_id_ = FrontendLatch();
                 next_if_id_.valid = true;
                 next_if_id_.fetched = fetchedInstruction;
-                next_pc_ = pc_ + 4;
+                // next_pc_ = pc_ + 4;
 
                 snapshot.valid = true;
                 snapshot.pc = fetchedInstruction.instruction.pc;
