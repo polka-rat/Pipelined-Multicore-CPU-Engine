@@ -172,11 +172,21 @@ void Core::Decode(){
                 next_pc_ = instruction.pc + 4;
                 const SquashReport report = machine_->SquashAfter(
                     fetchedInstruction.sequence);
-                branch_prediction_->RecordSquash(report.fetches, 0,
+                std::uint64_t pipeline_operations = 0;
+                for (ExecutionPipeline* pipeline : pipelines_) {
+                    pipeline_operations += pipeline->SquashAfter(
+                        fetchedInstruction.sequence);
+                }
+                speculation_control_->RemoveYoungerCheckpoints(
+                    fetchedInstruction.sequence);
+                branch_prediction_->RecordSquash(report.fetches,
+                                                 pipeline_operations,
                                                  report.completions,
                                                  report.data_requests);
                 next_fetch_in_flight_ = false;
                 next_if_id_ = FrontendLatch();
+                control_recognized_this_cycle_ = true;
+                redirect_this_cycle_ = true;
                 for (int i = 0; i < 7; ++i) {
                     pipelines_[i]->Operate(current_boundary_, std::nullopt,
                                            consume_output_[i]);
