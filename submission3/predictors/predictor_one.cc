@@ -115,7 +115,7 @@ BranchPrediction PredictorOne::Predict(std::uint32_t pc) {
   }
 
   // prediction.taken = bt_entry.type == BranchType::kUnconditional ? true : provider_taken;
-  if (!unconditional) {
+  if (!unconditional){
     ++loop_metrics_.table_reads;
     const LoopEntry& entry = loop_[LoopIndex(pc)];
     if (entry.valid && entry.tag == LoopTag(pc) && entry.trip != 0 &&
@@ -123,7 +123,7 @@ BranchPrediction PredictorOne::Predict(std::uint32_t pc) {
       final_taken = entry.current == entry.trip ? !entry.direction : entry.direction;
       prediction.information |= std::uint64_t{1} << kLoopSelectedBit;
     }
-  }
+  } 
   prediction.taken = bt_entry.type == BranchType::kUnconditional ? true : final_taken;
 
   prediction.confidence = (strong_pred || unconditional) ? 1 : 0;
