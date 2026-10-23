@@ -1,6 +1,15 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic
 CPPFLAGS := -I. -Iinclude
+ifeq ($(OS),Windows_NT)
+MKDIR_P = if not exist "$(subst /,\,$1)" mkdir "$(subst /,\,$1)"
+RM_RF = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
+RM_FILE = if exist "$(subst /,\,$1)" del /q "$(subst /,\,$1)"
+else
+MKDIR_P = mkdir -p "$1"
+RM_RF = rm -rf "$1"
+RM_FILE = rm -f "$1"
+endif
 PA3_SOURCES := $(filter-out framework/main.cc,$(wildcard *.cc framework/*.cc \
     design/*.cc execution_unit/*.cc predictors/*.cc cache/*.cc))
 PA3_SOURCES := $(filter-out statistics.cc,$(PA3_SOURCES))
@@ -14,7 +23,7 @@ pa4: $(CPU_OBJECTS) $(SYSTEM_OBJECTS) .build/framework/pa4/main.o
 pa4-noc: $(SYSTEM_OBJECTS) .build/framework/pa4/noc_main.o
 	$(CXX) $(CXXFLAGS) $^ -o $@
 .build/%.o: %.cc
-	@mkdir -p $(dir $@)
+	@$(call MKDIR_P,$(@D))
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
 -include $(CPU_OBJECTS:.o=.d) $(SYSTEM_OBJECTS:.o=.d) \
     .build/framework/pa4/main.d .build/framework/pa4/noc_main.d
@@ -23,5 +32,7 @@ framework-test:
 test: all
 	python3 tests/run_tests.py
 clean:
-	rm -rf .build pa4 pa4-noc
+	@$(call RM_RF,.build)
+	@$(call RM_FILE,pa4)
+	@$(call RM_FILE,pa4-noc)
 .PHONY: all test clean framework-test
