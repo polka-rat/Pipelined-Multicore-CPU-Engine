@@ -10,26 +10,35 @@ namespace multicore {
         if (eligible_requests.empty()) return std::nullopt;
 
         unsigned oldest = eligible_requests.front();
-        if (configuration.scheduler != "custom" || controller.banks.empty()) {
-            // find the oldest req
-            for (unsigned i: eligible_requests) {
-                const Packet& packetOldest = controller.queue[oldest];
-                const Packet& packetI = controller.queue[i];
-                if (packetOldest.controller_arrival > packetI.controller_arrival)
+        // find the oldest req
+        for (unsigned i: eligible_requests) {
+            const Packet& packetOldest = controller.queue[oldest];
+            const Packet& packetI = controller.queue[i];
+            if (packetOldest.controller_arrival > packetI.controller_arrival)
+            oldest = i;
+            else if (packetOldest.controller_arrival == packetI.controller_arrival) {
+                if (packetOldest.id > packetI.id)
                 oldest = i;
-                else if (packetOldest.controller_arrival == packetI.controller_arrival) {
-                    if (packetOldest.id > packetI.id)
+                else if (packetOldest.id == packetI.id) {
+                    if (oldest > i)
                     oldest = i;
-                    else if (packetOldest.id == packetI.id) {
-                        if (oldest > i)
-                        oldest = i;
-                    }
                 }
             }
+        }
+
+        if (configuration.scheduler != "custom" || controller.banks.empty()) {
             return oldest;
         }
+
+        // Starvation prevention
+        Cycle maxWaitTime = 32;
+        for (unsigned i: eligible_requests) {
+            const Packet& packet = controller.queue[i];
+            Cycle waitTime = (cycle >= packet.controller_arrival) ? cycle - packet.controller_arrival:0;
+            if (waitTime >= maxWaitTime) return oldest;
+        }
             
-        // Custom policy: First Ready First Come First Served
+        // Custom policy: FR-FCFS
         std::optional<unsigned> selected;
         for (unsigned i: eligible_requests) {
             const Packet& packet = controller.queue[i];
@@ -53,9 +62,11 @@ namespace multicore {
                 }
             }
         }
+
+        return selected ? selected : std::optional<unsigned>(oldest);
         
         // PA4-MC-01: Implement FCFS and your policy. Return an eligible queue index.
-        not_implemented("PA4-MC-01");
+        // not_implemented("PA4-MC--01");
 
     }
 
