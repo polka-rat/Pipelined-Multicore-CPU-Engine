@@ -37,7 +37,21 @@ namespace multicore {
 
         if (candidates.empty()) return std::nullopt;
         if (configuration.arbitration == "rr") {
-            
+            const ArbitrationCandidate* selectedCandidate = nullptr;
+            for (const auto& candidate: candidates) {
+                if (candidate.input >= round_robin_cursor) {
+                    if (selectedCandidate == nullptr || candidate.input < selectedCandidate->input)
+                        selectedCandidate = &candidate;
+                }
+            }
+            if (selectedCandidate == nullptr) {
+                // wrap around if nothing is found
+                for (const auto& candidate: candidates) {
+                    if (selectedCandidate == nullptr || candidate.input < selectedCandidate->input)
+                        selectedCandidate = &candidate;
+                }
+            }
+            return selectedCandidate->input;
         }
         
         // PA4-NOC-02: Implement round-robin and your policy. Return an eligible input index.
