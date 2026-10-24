@@ -26,6 +26,7 @@ namespace multicore {
             if (x > destX) return NegativeX;
         }
 
+        return Local;
         // not_implemented("PA4--NOC-01");
 
     }
@@ -34,10 +35,10 @@ namespace multicore {
         const std::vector<ArbitrationCandidate>& candidates/* candidates */,
         unsigned round_robin_cursor/* round_robin_cursor */,
         const SystemConfig& configuration /* configuration */) {
+        const ArbitrationCandidate* selectedCandidate = nullptr;
 
         if (candidates.empty()) return std::nullopt;
         if (configuration.arbitration == "rr") {
-            const ArbitrationCandidate* selectedCandidate = nullptr;
             for (const auto& candidate: candidates) {
                 if (candidate.input >= round_robin_cursor) {
                     if (selectedCandidate == nullptr || candidate.input < selectedCandidate->input)
@@ -53,9 +54,23 @@ namespace multicore {
             }
             return selectedCandidate->input;
         }
-        
+
+        // Custom policy implementation
+        // We are implementing a policy in whihc the oldest packet wrt injection is given the priority
+        selectedCandidate = &candidates.front();
+        for (const auto& candidate: candidates) {
+            if (candidate.packet.injected < selectedCandidate->packet.injected) {
+                selectedCandidate = &candidate;
+            } else if (candidate.packet.injected == selectedCandidate->packet.injected) {
+                // Tie breaker for injected
+                if (candidate.input < selectedCandidate->input)
+                    selectedCandidate = &candidate;
+            } 
+        }
+        return selectedCandidate->input;
+
         // PA4-NOC-02: Implement round-robin and your policy. Return an eligible input index.
-        not_implemented("PA4-NOC-02");
+        // not_implemented("PA4-NOC--02");
 
     }
 
