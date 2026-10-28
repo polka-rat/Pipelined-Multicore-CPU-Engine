@@ -61,7 +61,10 @@ void Core::Memory(){
         snapshot.valid = true;
         snapshot.pc = executionResult.instruction.pc;
         snapshot.opcode = OpcodeName(executionResult.instruction.opcode);
-
+                if (!machine_->MemorySequenceMayIssue(executionResult.sequence)) {
+            snapshot.action = "ORDERING_STALL";
+            return;
+        }
         if (machine_->TryIssueData(executionResult.sequence,
                                    executionResult.address,
                                    executionResult.memory_write,
@@ -105,13 +108,20 @@ void Core::Execute(){
                     branch_result.taken = executionResult.redirect;
                     branch_result.target = executionResult.next_pc;
 
-                    const bool mispredicted =
-                        branch_prediction_->Resolve(branch_result,
-                                                   executionResult.predictions);
+                                      branch_prediction_->Resolve(
+                        branch_result, executionResult.predictions);
+
                     const RecoveryDecision recovery =
                         speculation_control_->Resolve(branch_result);
-                    if (mispredicted != recovery.mispredicted) {
-                        throw std::runtime_error("branch recovery decision mismatch");
+
+                    // A direction error can still produce the correct next PC.
+                    const bool wrong_next_pc =
+                        executionResult.predictions.next_pc !=
+                        recovery.correct_next_pc;
+
+                    if (wrong_next_pc != recovery.mispredicted) {
+                        throw std::runtime_error(
+                            "branch recovery decision mismatch");
                     }
                     if (recovery.mispredicted) {
                         next_pc_ = recovery.correct_next_pc;
@@ -289,22 +299,25 @@ void Core::Decode(){
         executionOperation.fetch_cycle = fetchedInstruction.fetch_cycle;
         executionOperation.predictions = fetchedInstruction.predictions;
 
-        executionOperation.lhs = machine_->ReadRegister(instruction.rs1);
-        // A store reads rs2 for its data value, but its effective address is
-        // still base register plus the instruction immediate.  Store rs2
-        // dependencies are checked by HazardControl and the value is copied
-        // below into store_value.
-        if (ReadsRs2(instruction.opcode) && instruction.opcode != Opcode::kSw) {
-            executionOperation.rhs = machine_->ReadRegister(instruction.rs2);
+               executionOperation.lhs = ReadsRs1(instruction.opcode)
+            ? machine_->ReadRegister(instruction.rs1) : 0;
+
+        if (ReadsRs2(instruction.opcode) &&
+            instruction.opcode != Opcode::kSw &&
+            instruction.opcode != Opcode::kXchg) {
+            executionOperation.rhs =
+                machine_->ReadRegister(instruction.rs2);
         } else {
-            executionOperation.rhs = static_cast<std::uint32_t>(instruction.immediate);
+            executionOperation.rhs =
+                static_cast<std::uint32_t>(instruction.immediate);
         }
 
-        if (instruction.opcode == Opcode::kSw) {
+        if (instruction.opcode == Opcode::kSw ||
+            instruction.opcode == Opcode::kXchg) {
             executionOperation.store_value =
-            machine_->ReadRegister(instruction.rs2);
+                machine_->ReadRegister(instruction.rs2);
         }
-        
+
         if (!machine_->TryAllocateCompletion(fetchedInstruction.sequence, instruction, decodeResult.writes_register, resultBoundary)) {
             machine_->RecordCpuStall(CpuStallReason::kExecutionCompletionSlot);
             for (int i = 0; i < 7; i++) {
