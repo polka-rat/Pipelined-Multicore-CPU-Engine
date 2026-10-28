@@ -1,74 +1,73 @@
 #include "pa4.h"
+
 namespace multicore {
 
-    std::optional<unsigned> select_memory_request(
-        const std::vector<unsigned>& eligible_requests/* eligible_requests */,
-        const MemoryController& controller/* controller */,
-        Cycle cycle/* cycle */,
-        const SystemConfig& configuration/* configuration */) {
+std::optional<unsigned> select_memory_request(
+    const std::vector<unsigned>& eligible_requests,
+    const MemoryController& controller,
+    Cycle cycle,
+    const SystemConfig& configuration) {
+  if (eligible_requests.empty()) {
+    return std::nullopt;
+  }
 
-        if (eligible_requests.empty()) return std::nullopt;
+  // Earlier controller arrival wins.
+  // Equal arrivals are ordered by queue index.
+  const auto older = [&](unsigned a, unsigned b) {
+    const Cycle arrival_a = controller.queue[a].controller_arrival;
+    const Cycle arrival_b = controller.queue[b].controller_arrival;
 
-        unsigned oldest = eligible_requests.front();
-        // find the oldest req
-        for (unsigned i: eligible_requests) {
-            const Packet& packetOldest = controller.queue[oldest];
-            const Packet& packetI = controller.queue[i];
-            if (packetOldest.controller_arrival > packetI.controller_arrival)
-            oldest = i;
-            else if (packetOldest.controller_arrival == packetI.controller_arrival) {
-                if (packetOldest.id > packetI.id)
-                oldest = i;
-                else if (packetOldest.id == packetI.id) {
-                    if (oldest > i)
-                    oldest = i;
-                }
-            }
-        }
+    return arrival_a < arrival_b ||
+           (arrival_a == arrival_b && a < b);
+  };
 
-        if (configuration.scheduler != "custom" || controller.banks.empty()) {
-            return oldest;
-        }
+  unsigned oldest = eligible_requests.front();
 
-        // Starvation prevention
-        Cycle maxWaitTime = 32;
-        for (unsigned i: eligible_requests) {
-            const Packet& packet = controller.queue[i];
-            Cycle waitTime = (cycle >= packet.controller_arrival) ? cycle - packet.controller_arrival:0;
-            if (waitTime >= maxWaitTime) return oldest;
-        }
-            
-        // Custom policy: FR-FCFS
-        std::optional<unsigned> selected;
-        for (unsigned i: eligible_requests) {
-            const Packet& packet = controller.queue[i];
-            const uint64_t line = packet.line_address / 64;
-            const unsigned bank = line % (controller.banks.size());
-            const uint64_t row = line / (controller.banks.size());
-            if (controller.banks[bank].open_row < 0) continue;
-            if (controller.banks[bank].open_row != row) continue;
-            if (!selected) selected = i;
-            else {
-                const Packet& packetSelected = controller.queue[*selected];
-                if (packetSelected.controller_arrival > packet.controller_arrival)
-                selected = i;
-                else if (packetSelected.controller_arrival == packet.controller_arrival) {
-                    if (packetSelected.id > packet.id)
-                    selected = i;
-                    else if (packetSelected.id == packet.id) {
-                        if (*selected > i)
-                        selected = i;
-                    }
-                }
-            }
-        }
+  for (unsigned index : eligible_requests) {
+    if (older(index, oldest)) {
+      oldest = index;
+    }
+  }
 
-        return selected ? selected : std::optional<unsigned>(oldest);
-        
-        // PA4-MC-01: Implement FCFS and your policy. Return an eligible queue index.
-        // not_implemented("PA4-MC--01");
+  if (configuration.scheduler != "custom") {
+    return oldest;
+  }
 
+  // Custom policy: prefer open-row hits.
+  // Aging prevents a stream of hits from starving older requests.
+  constexpr Cycle kMaxWait = 32;
+  const Cycle arrival =
+      controller.queue[oldest].controller_arrival;
+
+  if (cycle >= arrival && cycle - arrival >= kMaxWait) {
+    return oldest;
+  }
+
+  std::optional<unsigned> selected;
+
+  for (unsigned index : eligible_requests) {
+    const Packet& packet = controller.queue[index];
+
+    const uint64_t local_line =
+        (packet.line_address / 64) / configuration.controllers;
+
+    const unsigned bank = local_line % configuration.banks;
+    const uint64_t row =
+        local_line / configuration.banks / 16;
+
+    const int open_row = controller.banks.at(bank).open_row;
+
+    if (open_row < 0 ||
+        static_cast<uint64_t>(open_row) != row) {
+      continue;
     }
 
+    if (!selected || older(index, *selected)) {
+      selected = index;
+    }
+  }
+
+  return selected ? selected : std::optional<unsigned>(oldest);
 }
 
+}  // namespace multicore
